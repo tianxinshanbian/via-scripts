@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         拾光解析
 // @namespace    https://viayoo.com/86wod5
-// @version      8.0.9
+// @version      8.1.0
 // @description  Via通用 · 聚合TV悬浮导航 · 底部抽屉界面 · 接口云端自动同步（跟随拾光映画接口源）
 // @run-at       document-start
 // @match        *://*/*
@@ -17,12 +17,9 @@
 
     // ================= 云端接口清单 =================
     // apis.js / apis.json 由 sync_apis.py 从「拾光映画接口源」同步后发布到 GitHub Pages
-    const LOCAL_VER = '8.0.9';
-    // NAS 直读优先：VoceChat 的 nginx 开了 /jiexi/ 静态目录并带 CORS
-    // 隧道域名一旦重置就会失效，下面会自动回落到 GitHub 两个源
-    const NAS_SOURCES = [
-        'https://rick-rehab-precipitation-base.trycloudflare.com/jiexi'
-    ];
+    const LOCAL_VER = '8.1.0';
+    // 8.1.0 起弃用 NAS 隧道源：清单由 NAS 容器主动推到 GitHub，脚本只认固定地址
+    const NAS_SOURCES = [];
     const GITHUB_SOURCES = [
         'https://tianxinshanbian.github.io/via-scripts',
         'https://cdn.jsdelivr.net/gh/tianxinshanbian/via-scripts@main'
@@ -210,13 +207,9 @@
     }
 
     function apiSources() {
-        var list = [];
-        var cached = readNasCache();
-        if (cached) list.push(cached);
-        NAS_SOURCES.concat(GITHUB_SOURCES).forEach(function (b) {
-            if (list.indexOf(b) < 0) list.push(b);
-        });
-        return list;
+        // 8.1.0：只认 GitHub 固定地址，不再碰会失效的隧道域名
+        try { localStorage.removeItem(LS_NAS); localStorage.removeItem(LS_NAS_AT); } catch (e) {}
+        return GITHUB_SOURCES.slice();
     }
 
     function pullApis(force, done) {
@@ -224,14 +217,14 @@
         var last = 0;
         try { last = parseInt(localStorage.getItem(LS_APIS_AT) || '0', 10); } catch (e) {}
         if (!force && last && now - last < PULL_GAP) { if (done) done(false); return; }
-        // 先把 NAS 地址刷到最新（有缓存且未过期就直接用），再去取接口
-        refreshNasBase(!!force, function () { run(false); });
+        // 8.1.0：直接取固定地址，不再先刷 NAS 地址
+        run(false);
 
         function run(allowRetry) {
             loadRemoteMulti('apis.js', '__VIA_APIS__', 3500, function (payload, from) {
                 if (!payload || !payload.apis || !payload.apis.length) {
                     // 全部源都失败时，强制重读一次版本清单里的 NAS 地址再试（域名可能刚变）
-                    if (allowRetry) { refreshNasBase(true, function () { run(false); }); return; }
+                    if (allowRetry) { refreshNasBase(true, function () { if (done) done(false); }); return; }
                     if (done) done(false);
                     return;
                 }
@@ -1226,9 +1219,9 @@ iframe{display:block !important;opacity:1 !important;visibility:visible !importa
                         if (h) {
                             h.textContent = ok
                                 ? (apiStatusText() + (apiMeta.updated_at ? ' · ' + apiMeta.updated_at.slice(11, 16) : ' · 刚刚'))
-                                : '同步失败：NAS / 云端都不可达';
+                                : '同步失败：云端清单不可达';
                         }
-                        tip(ok ? ('✅ ' + apiStatusText()) : '❌ 同步失败（NAS / GitHub 都不可达）');
+                        tip(ok ? ('✅ ' + apiStatusText()) : '❌ 同步失败（云端清单不可达）');
                     });
                 } else if (act === 'checkver') {
                     tip('⏳ 正在检查更新…');
