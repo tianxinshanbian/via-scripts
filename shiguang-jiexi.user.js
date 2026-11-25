@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         拾光解析
 // @namespace    https://viayoo.com/86wod5
-// @version      8.0.3
+// @version      8.0.4
 // @description  Via通用 · 聚合TV悬浮导航 · 底部抽屉界面 · 接口云端自动同步（跟随拾光映画接口源）
 // @run-at       document-start
 // @match        *://*/*
@@ -17,7 +17,7 @@
 
     // ================= 云端接口清单 =================
     // apis.js / apis.json 由 sync_apis.py 从「拾光映画接口源」同步后发布到 GitHub Pages
-    const LOCAL_VER = '8.0.3';
+    const LOCAL_VER = '8.0.4';
     const CLOUD_SOURCES = [
         'https://tianxinshanbian.github.io/via-scripts',
         'https://cdn.jsdelivr.net/gh/tianxinshanbian/via-scripts@main'
@@ -972,6 +972,10 @@ iframe{display:block !important;opacity:1 !important;visibility:visible !importa
 
             function renderSettings() {
                 let html = '<div class="viaPxHead"><span class="viaPxTitle">设置</span><span class="viaPxVer">' + LOCAL_VER + '</span></div>';
+                html += '<div class="viaPxRow"><span class="l">云端清单<i>' + escHtml(apiStatusText() + (apiMeta.updated_at ? ' · ' + apiMeta.updated_at.slice(5, 16) : '')) + '</i></span>'
+                    + '<button class="viaPxMini" data-act="sync">立即同步</button></div>';
+                html += '<div class="viaPxRow"><span class="l">脚本版本<i>' + escHtml(LOCAL_VER) + '</i></span>'
+                    + '<button class="viaPxMini" data-act="checkver">检查更新</button></div>';
                 html += '<div class="viaPxSec">默认接口 · 右侧开关控制是否显示</div>';
                 interfaces.forEach(function (i, idx) {
                     html += '<div class="viaPxRow"><span class="l">' + escHtml(i.name) + '</span><span class="r">'
@@ -986,13 +990,9 @@ iframe{display:block !important;opacity:1 !important;visibility:visible !importa
                     + '<span class="viaPxSw"><input type="checkbox" id="viaPxSim"' + (settings.simulateAndroid ? ' checked' : '') + '><i></i></span></div>';
                 html += '<div class="viaPxRow" style="display:block"><span class="l">主页地址<i>点「🏠 主页」跳这里</i></span>'
                     + '<input class="viaPxInput" id="viaPxHome" placeholder="留空则「🏠 主页」不可用；可填 https://… 或 App 打开地址" value="' + escHtml(settings.homeUrl || '') + '"></div>';
-                html += '<div class="viaPxSec">接口来源</div>';
-                html += '<div class="viaPxRow"><span class="l">云端清单<i>' + escHtml(apiStatusText() + (apiMeta.updated_at ? ' · ' + apiMeta.updated_at.slice(5, 16) : '')) + '</i></span>'
-                    + '<button class="viaPxMini" data-act="sync">立即同步</button></div>';
-                html += '<div class="viaPxRow"><span class="l">脚本版本<i>' + escHtml(LOCAL_VER) + '</i></span>'
-                    + '<button class="viaPxMini" data-act="checkver">检查更新</button></div>';
+                html += '<div class="viaPxSec">关于</div>';
                 html += '<div class="viaPxBar single" style="margin-top:16px"><button data-act="back" class="ghost">返回</button></div>';
-                html += '<div class="viaPxVer">拾光映画接口源 · GitHub Pages 分发</div>';
+                html += '<div class="viaPxVer">接口源：拾光映画 · 分发：GitHub Pages / jsDelivr</div>';
                 setView.innerHTML = html;
             }
 
