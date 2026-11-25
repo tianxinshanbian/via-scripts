@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         拾光解析
 // @namespace    https://viayoo.com/86wod5
-// @version      8.0.2
+// @version      8.0.3
 // @description  Via通用 · 聚合TV悬浮导航 · 底部抽屉界面 · 接口云端自动同步（跟随拾光映画接口源）
 // @run-at       document-start
 // @match        *://*/*
@@ -17,8 +17,12 @@
 
     // ================= 云端接口清单 =================
     // apis.js / apis.json 由 sync_apis.py 从「拾光映画接口源」同步后发布到 GitHub Pages
-    const LOCAL_VER = '8.0.2';
-    const CLOUD_BASE = 'https://tianxinshanbian.github.io/via-scripts';
+    const LOCAL_VER = '8.0.3';
+    const CLOUD_SOURCES = [
+        'https://tianxinshanbian.github.io/via-scripts',
+        'https://cdn.jsdelivr.net/gh/tianxinshanbian/via-scripts@main'
+    ];
+    const CLOUD_BASE = CLOUD_SOURCES[0];
     const APIS_JS_URL = CLOUD_BASE + '/apis.js';
     const APIS_JSON_URL = CLOUD_BASE + '/apis.json';
     const VERSION_JS_URL = CLOUD_BASE + '/version.js';
@@ -130,12 +134,24 @@
         setTimeout(function () { finish(null); }, timeout || 4000);
     }
 
+    function loadRemoteMulti(file, marker, timeout, cb) {
+        var i = 0;
+        function next() {
+            if (i >= CLOUD_SOURCES.length) { cb(null); return; }
+            var url = CLOUD_SOURCES[i++] + '/' + file + '?t=' + Date.now();
+            loadRemoteScript(url, marker, timeout, function (obj) {
+                if (obj) { cb(obj); } else { next(); }
+            });
+        }
+        next();
+    }
+
     function pullApis(force, done) {
         var now = Date.now();
         var last = 0;
         try { last = parseInt(localStorage.getItem(LS_APIS_AT) || '0', 10); } catch (e) {}
         if (!force && last && now - last < PULL_GAP) { if (done) done(false); return; }
-        loadRemoteScript(APIS_JS_URL + '?t=' + now, '__VIA_APIS__', 4500, function (payload) {
+        loadRemoteMulti('apis.js', '__VIA_APIS__', 3500, function (payload) {
             if (!payload || !payload.apis || !payload.apis.length) {
                 if (done) done(false);
                 return;
@@ -176,7 +192,7 @@
                     simulateAndroid: parsed.simulateAndroid !== undefined ? parsed.simulateAndroid : (deviceType === 'ios'),
                     defaultInterfaceId: parsed.defaultInterfaceId || '',
                     autoFullscreen: parsed.autoFullscreen !== undefined ? parsed.autoFullscreen : false,
-                    homeUrl: parsed.homeUrl || 'file:///sdcard/聚合TV/index.html'
+                    homeUrl: parsed.homeUrl || ''
                 };
             }
         } catch (e) {}
@@ -184,7 +200,7 @@
             simulateAndroid: deviceType === 'ios',
             defaultInterfaceId: '',
             autoFullscreen: false,
-            homeUrl: 'file:///sdcard/聚合TV/index.html'
+            homeUrl: ''
         };
     }
 
@@ -841,9 +857,10 @@
 .viaPxRow .l i{display:block;font-size:11px;color:#8b93a1;font-style:normal;margin-top:2px;}
 .viaPxRow .r{display:flex;align-items:center;gap:12px;}
 .viaPxRow input[type="radio"]{width:19px;height:19px;accent-color:#ff7a18;}
-.viaPxSw{position:relative;display:inline-block;width:42px;height:24px;flex:none;}
-.viaPxSw input{opacity:0;width:0;height:0;position:absolute;}
-.viaPxSw i{position:absolute;inset:0;background:#2c3244;border-radius:12px;transition:background .2s;}
+.viaPxSw{position:relative;display:inline-block;width:42px;height:24px;flex:none;cursor:pointer;}
+.viaPxSw input{position:absolute;left:0;top:0;width:100%;height:100%;margin:0;padding:0;opacity:0;z-index:3;cursor:pointer;
+ -webkit-appearance:none;appearance:none;border:0;background:transparent;}
+.viaPxSw i{pointer-events:none;position:absolute;inset:0;background:#2c3244;border-radius:12px;transition:background .2s;}
 .viaPxSw i:after{content:"";position:absolute;width:18px;height:18px;left:3px;top:3px;background:#fff;border-radius:50%;transition:transform .2s;}
 .viaPxSw input:checked + i{background:#ff6a00;}
 .viaPxSw input:checked + i:after{transform:translateX(18px);}
@@ -923,6 +940,7 @@ iframe{display:block !important;opacity:1 !important;visibility:visible !importa
                 if (msgTimer) clearTimeout(msgTimer);
                 msgTimer = setTimeout(function () { msg.classList.remove('on'); }, 2000);
             }
+            window.__viaPxToast = tip;
 
             function openSheet() {
                 renderGrid();
@@ -967,7 +985,7 @@ iframe{display:block !important;opacity:1 !important;visibility:visible !importa
                 html += '<div class="viaPxRow"><span class="l">模拟安卓手机<i>改 UA / 拦截 App 跳转</i></span>'
                     + '<span class="viaPxSw"><input type="checkbox" id="viaPxSim"' + (settings.simulateAndroid ? ' checked' : '') + '><i></i></span></div>';
                 html += '<div class="viaPxRow" style="display:block"><span class="l">主页地址<i>点「🏠 主页」跳这里</i></span>'
-                    + '<input class="viaPxInput" id="viaPxHome" value="' + escHtml(settings.homeUrl || DEFAULT_HOME_URL) + '"></div>';
+                    + '<input class="viaPxInput" id="viaPxHome" placeholder="留空则「🏠 主页」不可用；可填 https://… 或 App 打开地址" value="' + escHtml(settings.homeUrl || '') + '"></div>';
                 html += '<div class="viaPxSec">接口来源</div>';
                 html += '<div class="viaPxRow"><span class="l">云端清单<i>' + escHtml(apiStatusText() + (apiMeta.updated_at ? ' · ' + apiMeta.updated_at.slice(5, 16) : '')) + '</i></span>'
                     + '<button class="viaPxMini" data-act="sync">立即同步</button></div>';
@@ -1092,7 +1110,8 @@ iframe{display:block !important;opacity:1 !important;visibility:visible !importa
                     return;
                 }
                 if (act === 'home') {
-                    const home = settings.homeUrl || DEFAULT_HOME_URL;
+                    const home = (settings.homeUrl || '').trim();
+                    if (!home) { tip('主页地址还没填，去「设置」里填一个'); return; }
                     closeSheet();
                     if (window.Android && window.Android.openUrl) window.Android.openUrl(home);
                     else location.href = home;
@@ -1121,7 +1140,7 @@ iframe{display:block !important;opacity:1 !important;visibility:visible !importa
                     pullApis(true, function (ok) {
                         btn.disabled = false;
                         if (ok) { saveSettings(settings); tip('✅ 已同步 ' + apiMeta.count + ' 条'); }
-                        else { tip('❌ 同步失败，沿用本机接口'); }
+                        else { tip('❌ 同步失败（GitHub / jsDelivr 都不通），先用本机接口'); }
                         renderSettings();
                     });
                 } else if (act === 'checkver') {
@@ -1159,7 +1178,7 @@ iframe{display:block !important;opacity:1 !important;visibility:visible !importa
 
             setView.addEventListener('focusout', function (e) {
                 if (e.target.id === 'viaPxHome') {
-                    const v = (e.target.value || '').trim() || DEFAULT_HOME_URL;
+                    const v = (e.target.value || '').trim();
                     settings.homeUrl = v;
                     saveSettings(settings);
                     e.target.value = v;
@@ -1256,10 +1275,16 @@ iframe{display:block !important;opacity:1 !important;visibility:visible !importa
         let last = 0;
         try { last = parseInt(localStorage.getItem(LS_UPD_AT) || '0', 10); } catch (e) {}
         if (!force && last && Date.now() - last < CHECK_GAP) return;
-        loadRemoteScript(VERSION_JS_URL + '?t=' + Date.now(), '__VIA_UPD__', 4000, function (m) {
+        loadRemoteMulti('version.js', '__VIA_UPD__', 3500, function (m) {
             try { localStorage.setItem(LS_UPD_AT, String(Date.now())); } catch (e) {}
-            if (!m || !m.version) return;
-            if (!isNewerVer(m.version, LOCAL_VER)) return;
+            if (!m || !m.version) {
+                if (force && window.__viaPxToast) window.__viaPxToast('更新源不可达，稍后再试');
+                return;
+            }
+            if (!isNewerVer(m.version, LOCAL_VER)) {
+                if (force && window.__viaPxToast) window.__viaPxToast('已是最新版 ' + LOCAL_VER);
+                return;
+            }
             showUpdateBar(m);
         });
     }
