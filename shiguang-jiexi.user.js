@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         拾光解析
 // @namespace    https://viayoo.com/86wod5
-// @version      8.0.6
+// @version      8.0.7
 // @description  Via通用 · 聚合TV悬浮导航 · 底部抽屉界面 · 接口云端自动同步（跟随拾光映画接口源）
 // @run-at       document-start
 // @match        *://*/*
@@ -17,12 +17,20 @@
 
     // ================= 云端接口清单 =================
     // apis.js / apis.json 由 sync_apis.py 从「拾光映画接口源」同步后发布到 GitHub Pages
-    const LOCAL_VER = '8.0.6';
-    const CLOUD_SOURCES = [
+    const LOCAL_VER = '8.0.7';
+    // NAS 直读优先：VoceChat 的 nginx 开了 /jiexi/ 静态目录并带 CORS
+    // 隧道域名一旦重置就会失效，下面会自动回落到 GitHub 两个源
+    const NAS_SOURCES = [
+        'https://rick-rehab-precipitation-base.trycloudflare.com/jiexi'
+    ];
+    const GITHUB_SOURCES = [
         'https://tianxinshanbian.github.io/via-scripts',
         'https://cdn.jsdelivr.net/gh/tianxinshanbian/via-scripts@main'
     ];
-    const CLOUD_BASE = CLOUD_SOURCES[0];
+    const CLOUD_SOURCES = NAS_SOURCES.concat(GITHUB_SOURCES);
+    // 版本清单只认 GitHub：NAS 里那份是静态快照，会过期
+    const VERSION_SOURCES = GITHUB_SOURCES;
+    const CLOUD_BASE = GITHUB_SOURCES[0];
     const APIS_JS_URL = CLOUD_BASE + '/apis.js';
     const APIS_JSON_URL = CLOUD_BASE + '/apis.json';
     const VERSION_JS_URL = CLOUD_BASE + '/version.js';
@@ -148,19 +156,20 @@
         setTimeout(function () { finish(null); }, timeout || 4000);
     }
 
-    function loadRemoteMulti(file, marker, timeout, cb) {
+    function loadRemoteMulti(file, marker, timeout, cb, sources) {
+        var list = sources || CLOUD_SOURCES;
         var i = 0;
         function tryScript(base) {
             loadRemoteScript(base + '/' + file + '?t=' + Date.now(), marker, timeout, function (obj) {
-                if (obj) { cb(obj); } else { next(); }
+                if (obj) { cb(obj, base); } else { next(); }
             });
         }
         function next() {
-            if (i >= CLOUD_SOURCES.length) { cb(null); return; }
-            var base = CLOUD_SOURCES[i++];
+            if (i >= list.length) { cb(null, ''); return; }
+            var base = list[i++];
             var jsonUrl = base + '/' + file.replace(/\.js$/i, '.json') + '?t=' + Date.now();
             fetchJSON(jsonUrl, timeout, function (obj) {
-                if (obj) { cb(obj); } else { tryScript(base); }
+                if (obj) { cb(obj, base); } else { tryScript(base); }
             });
         }
         next();
@@ -171,7 +180,7 @@
         var last = 0;
         try { last = parseInt(localStorage.getItem(LS_APIS_AT) || '0', 10); } catch (e) {}
         if (!force && last && now - last < PULL_GAP) { if (done) done(false); return; }
-        loadRemoteMulti('apis.js', '__VIA_APIS__', 3500, function (payload) {
+        loadRemoteMulti('apis.js', '__VIA_APIS__', 3500, function (payload, from) {
             if (!payload || !payload.apis || !payload.apis.length) {
                 if (done) done(false);
                 return;
@@ -179,7 +188,7 @@
             applyInterfaceList(payload.apis, payload.default_apis || [], {
                 count: payload.apis.length,
                 updated_at: payload.updated_at || '',
-                origin: '云端'
+                origin: (from && from.indexOf('trycloudflare') >= 0) ? 'NAS' : '云端'
             });
             try { localStorage.setItem(LS_APIS, JSON.stringify(payload)); } catch (e) {}
             try { localStorage.setItem(LS_APIS_AT, String(now)); } catch (e) {}
@@ -1326,7 +1335,7 @@ iframe{display:block !important;opacity:1 !important;visibility:visible !importa
                 if (hv2) hv2.textContent = '发现新版 ' + m.version;
             }
             showUpdateBar(m);
-        });
+        }, VERSION_SOURCES);
     }
 
     if (document.readyState === 'loading') {
