@@ -817,7 +817,7 @@
 #viaPxMain{padding:2px 16px 12px;overflow-y:auto;}
 .viaPxHead{display:flex;align-items:center;justify-content:space-between;margin:6px 0 12px;}
 .viaPxTitle{font-size:17px;font-weight:600;letter-spacing:.5px;}
-.viaPxMeta{font-size:11px;color:#8b93a1;max-width:56%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right;flex:none;}
+.viaPxMeta{display:block;font-size:11px;color:#8b93a1;margin:-6px 0 10px;}.viaPxVer{font-size:11px;color:#8b93a1;}
 .viaPxGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
 .viaPxCard{min-width:0;background:#1d2230;border:1px solid #262c3b;border-radius:14px;padding:11px 12px;color:#e8eaed;
  text-align:left;display:flex;flex-direction:column;gap:3px;min-height:62px;cursor:pointer;font-size:13px;
@@ -892,7 +892,7 @@ iframe{display:block !important;opacity:1 !important;visibility:visible !importa
 <div id="viaPxSheet">
   <div class="viaPxGrip"></div>
   <div id="viaPxMain">
-    <div class="viaPxHead"><span class="viaPxTitle">视频解析</span><span class="viaPxMeta" id="viaPxMeta"></span></div>
+    <div class="viaPxHead"><span class="viaPxTitle">视频解析</span></div><div class="viaPxMeta" id="viaPxMeta"></div>
     <div class="viaPxGrid" id="viaPxGrid"></div>
     <div class="viaPxBar">
       <button data-act="home">🏠 主页</button>
@@ -953,7 +953,7 @@ iframe{display:block !important;opacity:1 !important;visibility:visible !importa
             }
 
             function renderSettings() {
-                let html = '<div class="viaPxHead"><span class="viaPxTitle">设置</span><span class="viaPxMeta">' + LOCAL_VER + '</span></div>';
+                let html = '<div class="viaPxHead"><span class="viaPxTitle">设置</span><span class="viaPxVer">' + LOCAL_VER + '</span></div>';
                 html += '<div class="viaPxSec">默认接口 · 右侧开关控制是否显示</div>';
                 interfaces.forEach(function (i, idx) {
                     html += '<div class="viaPxRow"><span class="l">' + escHtml(i.name) + '</span><span class="r">'
