@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         拾光解析
 // @namespace    https://viayoo.com/86wod5
-// @version      8.0.4
+// @version      8.0.6
 // @description  Via通用 · 聚合TV悬浮导航 · 底部抽屉界面 · 接口云端自动同步（跟随拾光映画接口源）
 // @run-at       document-start
 // @match        *://*/*
@@ -17,7 +17,7 @@
 
     // ================= 云端接口清单 =================
     // apis.js / apis.json 由 sync_apis.py 从「拾光映画接口源」同步后发布到 GitHub Pages
-    const LOCAL_VER = '8.0.4';
+    const LOCAL_VER = '8.0.6';
     const CLOUD_SOURCES = [
         'https://tianxinshanbian.github.io/via-scripts',
         'https://cdn.jsdelivr.net/gh/tianxinshanbian/via-scripts@main'
@@ -134,13 +134,33 @@
         setTimeout(function () { finish(null); }, timeout || 4000);
     }
 
+    // 先用 fetch 读 JSON（jsDelivr 带 CORS 头，可直接读），失败再退回 <script> 注入
+    function fetchJSON(url, timeout, cb) {
+        var done = false;
+        function finish(o) { if (done) return; done = true; cb(o); }
+        try {
+            if (typeof fetch !== 'function') { finish(null); return; }
+            fetch(url, { cache: 'no-store', credentials: 'omit' })
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (o) { finish(o); })
+                .catch(function () { finish(null); });
+        } catch (e) { finish(null); return; }
+        setTimeout(function () { finish(null); }, timeout || 4000);
+    }
+
     function loadRemoteMulti(file, marker, timeout, cb) {
         var i = 0;
+        function tryScript(base) {
+            loadRemoteScript(base + '/' + file + '?t=' + Date.now(), marker, timeout, function (obj) {
+                if (obj) { cb(obj); } else { next(); }
+            });
+        }
         function next() {
             if (i >= CLOUD_SOURCES.length) { cb(null); return; }
-            var url = CLOUD_SOURCES[i++] + '/' + file + '?t=' + Date.now();
-            loadRemoteScript(url, marker, timeout, function (obj) {
-                if (obj) { cb(obj); } else { next(); }
+            var base = CLOUD_SOURCES[i++];
+            var jsonUrl = base + '/' + file.replace(/\.js$/i, '.json') + '?t=' + Date.now();
+            fetchJSON(jsonUrl, timeout, function (obj) {
+                if (obj) { cb(obj); } else { tryScript(base); }
             });
         }
         next();
@@ -972,9 +992,9 @@ iframe{display:block !important;opacity:1 !important;visibility:visible !importa
 
             function renderSettings() {
                 let html = '<div class="viaPxHead"><span class="viaPxTitle">设置</span><span class="viaPxVer">' + LOCAL_VER + '</span></div>';
-                html += '<div class="viaPxRow"><span class="l">云端清单<i>' + escHtml(apiStatusText() + (apiMeta.updated_at ? ' · ' + apiMeta.updated_at.slice(5, 16) : '')) + '</i></span>'
+                html += '<div class="viaPxRow"><span class="l">云端清单<i id="viaApiHint">' + escHtml(apiStatusText() + (apiMeta.updated_at ? ' · ' + apiMeta.updated_at.slice(5, 16) : '')) + '</i></span>'
                     + '<button class="viaPxMini" data-act="sync">立即同步</button></div>';
-                html += '<div class="viaPxRow"><span class="l">脚本版本<i>' + escHtml(LOCAL_VER) + '</i></span>'
+                html += '<div class="viaPxRow"><span class="l">脚本版本<i id="viaVerHint">' + escHtml(LOCAL_VER) + '</i></span>'
                     + '<button class="viaPxMini" data-act="checkver">检查更新</button></div>';
                 html += '<div class="viaPxSec">默认接口 · 右侧开关控制是否显示</div>';
                 interfaces.forEach(function (i, idx) {
@@ -1136,15 +1156,23 @@ iframe{display:block !important;opacity:1 !important;visibility:visible !importa
                     mainView.style.display = 'block';
                 } else if (act === 'sync') {
                     tip('⏳ 正在同步接口…');
-                    btn.disabled = true;
+                    const h0 = document.getElementById('viaApiHint');
+                    if (h0) h0.textContent = '同步中…';
                     pullApis(true, function (ok) {
-                        btn.disabled = false;
-                        if (ok) { saveSettings(settings); tip('✅ 已同步 ' + apiMeta.count + ' 条'); }
-                        else { tip('❌ 同步失败（GitHub / jsDelivr 都不通），先用本机接口'); }
+                        if (ok) saveSettings(settings);
                         renderSettings();
+                        const h = document.getElementById('viaApiHint');
+                        if (h) {
+                            h.textContent = ok
+                                ? ('已同步 ' + apiMeta.count + ' 条' + (apiMeta.updated_at ? ' · ' + apiMeta.updated_at.slice(11, 16) : ' · 刚刚'))
+                                : '同步失败，源不可达';
+                        }
+                        tip(ok ? ('✅ 已同步 ' + apiMeta.count + ' 条') : '❌ 同步失败（GitHub / jsDelivr 都不通）');
                     });
                 } else if (act === 'checkver') {
                     tip('⏳ 正在检查更新…');
+                    const h0 = document.getElementById('viaVerHint');
+                    if (h0) h0.textContent = '检查中…';
                     checkVersion(true);
                 }
             });
@@ -1278,12 +1306,24 @@ iframe{display:block !important;opacity:1 !important;visibility:visible !importa
         loadRemoteMulti('version.js', '__VIA_UPD__', 3500, function (m) {
             try { localStorage.setItem(LS_UPD_AT, String(Date.now())); } catch (e) {}
             if (!m || !m.version) {
-                if (force && window.__viaPxToast) window.__viaPxToast('更新源不可达，稍后再试');
+                if (force) {
+                    var hv0 = document.getElementById('viaVerHint');
+                    if (hv0) hv0.textContent = '源不可达';
+                    if (window.__viaPxToast) window.__viaPxToast('更新源不可达，稍后再试');
+                }
                 return;
             }
             if (!isNewerVer(m.version, LOCAL_VER)) {
-                if (force && window.__viaPxToast) window.__viaPxToast('已是最新版 ' + LOCAL_VER);
+                if (force) {
+                    var hv1 = document.getElementById('viaVerHint');
+                    if (hv1) hv1.textContent = '已是最新 ' + LOCAL_VER;
+                    if (window.__viaPxToast) window.__viaPxToast('已是最新版 ' + LOCAL_VER);
+                }
                 return;
+            }
+            if (force) {
+                var hv2 = document.getElementById('viaVerHint');
+                if (hv2) hv2.textContent = '发现新版 ' + m.version;
             }
             showUpdateBar(m);
         });
