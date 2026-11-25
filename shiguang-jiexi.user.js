@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         拾光解析
 // @namespace    https://viayoo.com/86wod5
-// @version      8.0.7
+// @version      8.0.8
 // @description  Via通用 · 聚合TV悬浮导航 · 底部抽屉界面 · 接口云端自动同步（跟随拾光映画接口源）
 // @run-at       document-start
 // @match        *://*/*
@@ -17,7 +17,7 @@
 
     // ================= 云端接口清单 =================
     // apis.js / apis.json 由 sync_apis.py 从「拾光映画接口源」同步后发布到 GitHub Pages
-    const LOCAL_VER = '8.0.7';
+    const LOCAL_VER = '8.0.8';
     // NAS 直读优先：VoceChat 的 nginx 开了 /jiexi/ 静态目录并带 CORS
     // 隧道域名一旦重置就会失效，下面会自动回落到 GitHub 两个源
     const NAS_SOURCES = [
@@ -1173,10 +1173,10 @@ iframe{display:block !important;opacity:1 !important;visibility:visible !importa
                         const h = document.getElementById('viaApiHint');
                         if (h) {
                             h.textContent = ok
-                                ? ('已同步 ' + apiMeta.count + ' 条' + (apiMeta.updated_at ? ' · ' + apiMeta.updated_at.slice(11, 16) : ' · 刚刚'))
-                                : '同步失败，源不可达';
+                                ? (apiStatusText() + (apiMeta.updated_at ? ' · ' + apiMeta.updated_at.slice(11, 16) : ' · 刚刚'))
+                                : '同步失败：NAS / 云端都不可达';
                         }
-                        tip(ok ? ('✅ 已同步 ' + apiMeta.count + ' 条') : '❌ 同步失败（GitHub / jsDelivr 都不通）');
+                        tip(ok ? ('✅ ' + apiStatusText()) : '❌ 同步失败（NAS / GitHub 都不可达）');
                     });
                 } else if (act === 'checkver') {
                     tip('⏳ 正在检查更新…');
