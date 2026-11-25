@@ -1,9 +1,9 @@
 {
-  "version": 1795615514,
-  "updated_at": "2026-11-25 22:05:14",
+  "version": 1795626833,
+  "updated_at": "2026-11-25 17:13:53",
   "source": "拾光映画接口源",
   "source_file": "video_config.json",
-  "source_path": "/视频vip解析/video_config.json",
+  "source_path": "/src/video_config.json",
   "count": 8,
   "apis": [
     "https://bfq.txnp.cn/player?url=",
