@@ -1,1 +1,1 @@
-window.__VIA_UPD__ = {"version": "8.0.0", "url": "https://tianxinshanbian.github.io/via-scripts/video-parser.user.js", "size": 57913, "md5": "a2d064727ae0cb215f91b11a8ecb50e0", "updated_at": "2026-11-25 22:17:36"};
+window.__VIA_UPD__ = {"version": "8.0.1", "url": "https://tianxinshanbian.github.io/via-scripts/shiguang-jiexi.user.js", "size": 57913, "md5": "2cc4fd923070f01c6d0d57082fe4072e", "updated_at": "2026-11-25 22:27:34"};
