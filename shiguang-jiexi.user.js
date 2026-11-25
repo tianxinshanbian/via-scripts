@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         拾光解析
 // @namespace    https://viayoo.com/86wod5
-// @version      8.0.8
+// @version      8.0.9
 // @description  Via通用 · 聚合TV悬浮导航 · 底部抽屉界面 · 接口云端自动同步（跟随拾光映画接口源）
 // @run-at       document-start
 // @match        *://*/*
@@ -17,7 +17,7 @@
 
     // ================= 云端接口清单 =================
     // apis.js / apis.json 由 sync_apis.py 从「拾光映画接口源」同步后发布到 GitHub Pages
-    const LOCAL_VER = '8.0.8';
+    const LOCAL_VER = '8.0.9';
     // NAS 直读优先：VoceChat 的 nginx 开了 /jiexi/ 静态目录并带 CORS
     // 隧道域名一旦重置就会失效，下面会自动回落到 GitHub 两个源
     const NAS_SOURCES = [
@@ -38,6 +38,8 @@
     const LS_PREFS = 'via_api_prefs_v2';
     const LS_APIS_AT = 'via_apis_pull_at';
     const LS_UPD_AT = 'via_ver_check_at';
+    const LS_NAS = 'via_nas_base_v1';
+    const LS_NAS_AT = 'via_nas_base_at';
     const PULL_GAP = 30 * 60 * 1000;
     const CHECK_GAP = 12 * 60 * 60 * 1000;
 
@@ -175,25 +177,75 @@
         next();
     }
 
+    function readNasCache() {
+        try {
+            var v = localStorage.getItem(LS_NAS) || '';
+            return /^https?:\/\//.test(v) ? v.replace(/\/+$/, '') : '';
+        } catch (e) { return ''; }
+    }
+
+    function writeNasCache(v) {
+        try { if (v) localStorage.setItem(LS_NAS, v.replace(/\/+$/, '')); } catch (e) {}
+    }
+
+    // NAS 隧道域名会变，所以地址不写死，而是从 GitHub 版本清单的 nas 字段里读
+    function refreshNasBase(force, cb) {
+        var now = Date.now();
+        var at = 0;
+        try { at = parseInt(localStorage.getItem(LS_NAS_AT) || '0', 10); } catch (e) {}
+        if (!force && at && now - at < PULL_GAP) { cb(); return; }
+        var i = 0;
+        function next() {
+            if (i >= GITHUB_SOURCES.length) { cb(); return; }
+            var base = GITHUB_SOURCES[i++];
+            fetchJSON(base + '/version.json?t=' + Date.now(), 3000, function (o) {
+                if (o && typeof o.nas === 'string' && /^https?:\/\//.test(o.nas)) {
+                    writeNasCache(o.nas);
+                    try { localStorage.setItem(LS_NAS_AT, String(Date.now())); } catch (e) {}
+                    cb();
+                } else { next(); }
+            });
+        }
+        next();
+    }
+
+    function apiSources() {
+        var list = [];
+        var cached = readNasCache();
+        if (cached) list.push(cached);
+        NAS_SOURCES.concat(GITHUB_SOURCES).forEach(function (b) {
+            if (list.indexOf(b) < 0) list.push(b);
+        });
+        return list;
+    }
+
     function pullApis(force, done) {
         var now = Date.now();
         var last = 0;
         try { last = parseInt(localStorage.getItem(LS_APIS_AT) || '0', 10); } catch (e) {}
         if (!force && last && now - last < PULL_GAP) { if (done) done(false); return; }
-        loadRemoteMulti('apis.js', '__VIA_APIS__', 3500, function (payload, from) {
-            if (!payload || !payload.apis || !payload.apis.length) {
-                if (done) done(false);
-                return;
-            }
-            applyInterfaceList(payload.apis, payload.default_apis || [], {
-                count: payload.apis.length,
-                updated_at: payload.updated_at || '',
-                origin: (from && from.indexOf('trycloudflare') >= 0) ? 'NAS' : '云端'
-            });
-            try { localStorage.setItem(LS_APIS, JSON.stringify(payload)); } catch (e) {}
-            try { localStorage.setItem(LS_APIS_AT, String(now)); } catch (e) {}
-            if (done) done(true);
-        });
+        // 先把 NAS 地址刷到最新（有缓存且未过期就直接用），再去取接口
+        refreshNasBase(!!force, function () { run(false); });
+
+        function run(allowRetry) {
+            loadRemoteMulti('apis.js', '__VIA_APIS__', 3500, function (payload, from) {
+                if (!payload || !payload.apis || !payload.apis.length) {
+                    // 全部源都失败时，强制重读一次版本清单里的 NAS 地址再试（域名可能刚变）
+                    if (allowRetry) { refreshNasBase(true, function () { run(false); }); return; }
+                    if (done) done(false);
+                    return;
+                }
+                var isGithub = GITHUB_SOURCES.indexOf(from) >= 0;
+                applyInterfaceList(payload.apis, payload.default_apis || [], {
+                    count: payload.apis.length,
+                    updated_at: payload.updated_at || '',
+                    origin: (!from || isGithub) ? '云端' : 'NAS'
+                });
+                try { localStorage.setItem(LS_APIS, JSON.stringify(payload)); } catch (e) {}
+                try { localStorage.setItem(LS_APIS_AT, String(now)); } catch (e) {}
+                if (done) done(true);
+            }, apiSources());
+        }
     }
 
     // 启动即用本地缓存，随后按 30 分钟节流去云端刷新
