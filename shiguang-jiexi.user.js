@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         拾光解析（聚合TV版）
+// @name         拾光解析
 // @namespace    https://viayoo.com/86wod5
-// @version      8.0.1
+// @version      8.0.2
 // @description  Via通用 · 聚合TV悬浮导航 · 底部抽屉界面 · 接口云端自动同步（跟随拾光映画接口源）
 // @run-at       document-start
 // @match        *://*/*
@@ -17,7 +17,7 @@
 
     // ================= 云端接口清单 =================
     // apis.js / apis.json 由 sync_apis.py 从「拾光映画接口源」同步后发布到 GitHub Pages
-    const LOCAL_VER = '8.0.1';
+    const LOCAL_VER = '8.0.2';
     const CLOUD_BASE = 'https://tianxinshanbian.github.io/via-scripts';
     const APIS_JS_URL = CLOUD_BASE + '/apis.js';
     const APIS_JSON_URL = CLOUD_BASE + '/apis.json';
