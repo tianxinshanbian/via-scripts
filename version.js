@@ -1,1 +1,1 @@
-window.__VIA_UPD__ = {"version": "7.0.0", "url": "https://tianxinshanbian.github.io/via-scripts/video-parser.user.js", "size": 60793, "md5": "7b9cc6a199c34afa01ec18dc7523b577", "updated_at": "2026-11-25 22:05:07"};
+window.__VIA_UPD__ = {"version": "8.0.0", "url": "https://tianxinshanbian.github.io/via-scripts/video-parser.user.js", "size": 57942, "md5": "c0dd82feb89c2ddd646f51325d13462c", "updated_at": "2026-11-25 22:12:14"};
