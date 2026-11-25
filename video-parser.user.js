@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         视频解析（聚合TV版）
 // @namespace    https://viayoo.com/86wod5
-// @version      7.0.0
-// @description  Via通用 · 聚合TV悬浮导航 · 接口云端自动同步（跟随拾光映画接口源）
+// @version      8.0.0
+// @description  Via通用 · 聚合TV悬浮导航 · 底部抽屉界面 · 接口云端自动同步（跟随拾光映画接口源）
 // @run-at       document-start
 // @match        *://*/*
 // @grant        none
@@ -17,7 +17,7 @@
 
     // ================= 云端接口清单 =================
     // apis.js / apis.json 由 sync_apis.py 从「拾光映画接口源」同步后发布到 GitHub Pages
-    const LOCAL_VER = '7.0.0';
+    const LOCAL_VER = '8.0.0';
     const CLOUD_BASE = 'https://tianxinshanbian.github.io/via-scripts';
     const APIS_JS_URL = CLOUD_BASE + '/apis.js';
     const APIS_JSON_URL = CLOUD_BASE + '/apis.json';
@@ -174,15 +174,17 @@
                 const parsed = JSON.parse(saved);
                 return {
                     simulateAndroid: parsed.simulateAndroid !== undefined ? parsed.simulateAndroid : (deviceType === 'ios'),
-                    defaultInterfaceId: parsed.defaultInterfaceId || 'jx1',
-                    autoFullscreen: parsed.autoFullscreen !== undefined ? parsed.autoFullscreen : false
+                    defaultInterfaceId: parsed.defaultInterfaceId || '',
+                    autoFullscreen: parsed.autoFullscreen !== undefined ? parsed.autoFullscreen : false,
+                    homeUrl: parsed.homeUrl || 'file:///sdcard/聚合TV/index.html'
                 };
             }
         } catch (e) {}
         return {
             simulateAndroid: deviceType === 'ios',
-            defaultInterfaceId: 'jx1',
-            autoFullscreen: false
+            defaultInterfaceId: '',
+            autoFullscreen: false,
+            homeUrl: 'file:///sdcard/聚合TV/index.html'
         };
     }
 
@@ -775,703 +777,501 @@
         }, 2000);
     }
 
+    // ============ 界面：底部抽屉（Via 手机端习惯） ============
+    const DEFAULT_HOME_URL = 'file:///sdcard/聚合TV/index.html';
+
+    // 解析站自身不显示悬浮球（避免在解析页里套娃）
+    const PARSER_DOMAINS = [
+        'nnxv.cn', 'xmflv.com', '202617.xyz', '789jiexi.icu', 'bfq.txnp.cn',
+        'jx.2s0.cn', 'jx.dmflv.cc', 'video.isyour.love', 'vip.xilibo.com',
+        'jx.77flv.cc', 'jx.flvcd.com', 'jx.qqwtt.com', 'jx.wmxz.wang',
+        'txnp.cn', 'im1907.top', 'maccms.xyz'
+    ];
+
+    function escHtml(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function apiStatusText() {
+        return (apiMeta.count || interfaces.length) + ' 条 · ' + apiMeta.origin;
+    }
+
+    function injectUiStyle() {
+        if (document.getElementById('viaPxStyle')) return;
+        const st = document.createElement('style');
+        st.id = 'viaPxStyle';
+        st.textContent = `
+#viaPxRoot{position:fixed;inset:0;pointer-events:none;z-index:2147483600;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;}
+#viaPxFab{position:fixed;right:16px;bottom:96px;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#ff8a2b,#ff4400);color:#fff;font-size:26px;line-height:1;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(255,68,0,.45);pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none;transition:transform .18s,opacity .22s;z-index:2;}
+#viaPxFab.hide{opacity:0;pointer-events:none;transform:scale(.65);}
+#viaPxFab.press{transform:scale(.9);}
+#viaPxMask{position:fixed;inset:0;background:rgba(0,0,0,.5);opacity:0;pointer-events:none;transition:opacity .22s;z-index:3;}
+#viaPxMask.on{opacity:1;pointer-events:auto;}
+#viaPxSheet{position:fixed;left:0;right:0;bottom:0;background:#151821;color:#e8eaed;border-radius:20px 20px 0 0;
+ box-shadow:0 -8px 28px rgba(0,0,0,.5);transform:translateY(106%);transition:transform .28s cubic-bezier(.22,.9,.3,1);
+ z-index:4;max-height:78vh;display:flex;flex-direction:column;pointer-events:auto;padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));}
+#viaPxSheet.on{transform:translateY(0);}
+.viaPxGrip{width:38px;height:4px;border-radius:2px;background:#3a3f4b;margin:9px auto 2px;flex:none;}
+#viaPxMain{padding:2px 16px 12px;overflow-y:auto;}
+.viaPxHead{display:flex;align-items:center;justify-content:space-between;margin:6px 0 12px;}
+.viaPxTitle{font-size:17px;font-weight:600;letter-spacing:.5px;}
+.viaPxMeta{font-size:11px;color:#8b93a1;max-width:56%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right;flex:none;}
+.viaPxGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
+.viaPxCard{min-width:0;background:#1d2230;border:1px solid #262c3b;border-radius:14px;padding:11px 12px;color:#e8eaed;
+ text-align:left;display:flex;flex-direction:column;gap:3px;min-height:62px;cursor:pointer;font-size:13px;
+ transition:background .15s,border-color .15s;}
+.viaPxCard:active{background:#252c3d;}
+.viaPxCard.def{border-color:#ff7a18;background:#241a12;}
+.viaPxCard .nm{font-weight:600;word-break:break-all;line-height:1.25;}
+.viaPxCard .sub{font-size:11px;color:#8b93a1;}
+.viaPxCard .sub.on{color:#ff9440;}
+.viaPxEmpty{grid-column:1/-1;color:#8b93a1;font-size:13px;padding:24px 0;text-align:center;}
+.viaPxBar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:14px;}
+.viaPxBar.single{grid-template-columns:minmax(0,1fr);}
+.viaPxBar button{padding:11px 2px;border-radius:12px;border:none;background:#222839;color:#dfe3ea;
+ font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;overflow:hidden;}
+.viaPxBar button:active{background:#2b3348;}
+.viaPxBar .ghost{background:#191d28;color:#9aa3b2;}
+#viaPxSettings{padding:2px 16px 8px;overflow-y:auto;display:none;}
+.viaPxSec{font-size:12px;color:#8b93a1;margin:10px 0 4px;}
+.viaPxRow{display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid #232838;}
+.viaPxRow .l{font-size:14px;color:#e8eaed;}
+.viaPxRow .l i{display:block;font-size:11px;color:#8b93a1;font-style:normal;margin-top:2px;}
+.viaPxRow .r{display:flex;align-items:center;gap:12px;}
+.viaPxRow input[type="radio"]{width:19px;height:19px;accent-color:#ff7a18;}
+.viaPxSw{position:relative;display:inline-block;width:42px;height:24px;flex:none;}
+.viaPxSw input{opacity:0;width:0;height:0;position:absolute;}
+.viaPxSw i{position:absolute;inset:0;background:#2c3244;border-radius:12px;transition:background .2s;}
+.viaPxSw i:after{content:"";position:absolute;width:18px;height:18px;left:3px;top:3px;background:#fff;border-radius:50%;transition:transform .2s;}
+.viaPxSw input:checked + i{background:#ff6a00;}
+.viaPxSw input:checked + i:after{transform:translateX(18px);}
+.viaPxInput{width:100%;margin-top:6px;padding:9px 12px;border-radius:10px;border:1px solid #2c3244;
+ background:#11141d;color:#e8eaed;font-size:12px;font-family:inherit;box-sizing:border-box;}
+.viaPxMini{padding:6px 12px;border-radius:10px;border:1px solid #3a4155;background:#1d2230;color:#ff9a4d;
+ font-size:12px;cursor:pointer;font-family:inherit;flex:none;}
+.viaPxMini:active{background:#252c3d;}
+.viaPxVer{font-size:11px;color:#6d7484;text-align:center;margin:12px 0 4px;}
+.viaPxMsg{position:fixed;left:50%;bottom:32%;transform:translateX(-50%);background:rgba(20,22,30,.94);
+ color:#fff;padding:10px 18px;border-radius:12px;font-size:13px;z-index:2147483646;opacity:0;
+ transition:opacity .2s;pointer-events:none;max-width:80vw;text-align:center;box-shadow:0 6px 20px rgba(0,0,0,.4);}
+.viaPxMsg.on{opacity:1;}
+#viaUpdBar{position:fixed;left:0;right:0;bottom:0;z-index:2147483647;background:#1f2329;color:#fff;
+ font-size:13px;padding:10px 14px calc(10px + env(safe-area-inset-bottom,0px));display:flex;align-items:center;gap:12px;
+ box-shadow:0 -3px 14px rgba(0,0,0,.45);font-family:-apple-system,"PingFang SC",sans-serif;}
+video{display:block !important;opacity:1 !important;visibility:visible !important;}
+iframe{display:block !important;opacity:1 !important;visibility:visible !important;}
+`;
+        document.head.appendChild(st);
+    }
+
+    // 主页按钮的兜底地址（设置里可改）
+    if (window.top === window.self) {
+        setTimeout(function () {
+            if (!document.getElementById('viaPxFab') && document.body) createBtn();
+        }, 2000);
+    }
+
     function createBtn() {
-        if (document.getElementById("floatBtn")) return;
-        
-        const parserDomains = [
-            'nnxv.cn',
-            'xmflv.com',
-            '202617.xyz',
-            '789jiexi.icu',
-            'bfq.txnp.cn',
-            'jx.xmflv.com',
-            'jx.2s0.cn',
-            'jx.dmflv.cc',
-            'video.isyour.love',
-            'vip.xilibo.com',
-            'jx.77flv.cc',
-            'jx.flvcd.com',
-            'jx.qqwtt.com',
-            'jx.wmxz.wang',
-            'jx.mgtv.com',
-            'jx.youku.com',
-            'jx.iqiyi.com',
-            'jx.mgtv.com',
-            'jx.sohu.com',
-            'jx.pptv.com',
-            'jx.kugou.com',
-            'jx.kuwo.cn',
-            'jx.xiami.com',
-            'jx.netease.com',
-            'jx.music.163.com',
-            'jx.y.qq.com',
-            'jx.v.qq.com',
-            'jx.iqiyi.com',
-            'jx.youku.com',
-            'jx.le.com',
-            'jx.mgtv.com',
-            'jx.sohu.com',
-            'jx.pptv.com'
-        ];
-        
-        const currentHost = window.location.hostname.toLowerCase();
-        for (const domain of parserDomains) {
-            if (currentHost.includes(domain)) {
-                return;
-            }
-        }
-        
+        if (document.getElementById('viaPxFab')) return;
         try {
-            if (!document.head) {
-                console.error('document.head not found');
-                return;
+            const host = (window.location.hostname || '').toLowerCase();
+            for (let d = 0; d < PARSER_DOMAINS.length; d++) {
+                if (host.indexOf(PARSER_DOMAINS[d]) >= 0) return;
+            }
+            if (!document.head || !document.body) return;
+
+            injectUiStyle();
+
+            const root = document.createElement('div');
+            root.id = 'viaPxRoot';
+            root.innerHTML = `
+<div id="viaPxMask"></div>
+<div id="viaPxFab">⚡</div>
+<div id="viaPxSheet">
+  <div class="viaPxGrip"></div>
+  <div id="viaPxMain">
+    <div class="viaPxHead"><span class="viaPxTitle">视频解析</span><span class="viaPxMeta" id="viaPxMeta"></span></div>
+    <div class="viaPxGrid" id="viaPxGrid"></div>
+    <div class="viaPxBar">
+      <button data-act="home">🏠 主页</button>
+      <button data-act="copy">📋 复制</button>
+      <button data-act="settings">⚙️ 设置</button>
+      <button data-act="close" class="ghost">关闭</button>
+    </div>
+  </div>
+  <div id="viaPxSettings"></div>
+</div>
+<div class="viaPxMsg" id="viaPxMsg"></div>`;
+            document.body.appendChild(root);
+            window.__viaPxRoot = root;
+
+            const fab = root.querySelector('#viaPxFab');
+            const mask = root.querySelector('#viaPxMask');
+            const sheet = root.querySelector('#viaPxSheet');
+            const msg = root.querySelector('#viaPxMsg');
+            const grid = root.querySelector('#viaPxGrid');
+            const metaEl = root.querySelector('#viaPxMeta');
+            const mainView = root.querySelector('#viaPxMain');
+            const setView = root.querySelector('#viaPxSettings');
+
+            let msgTimer = null;
+            function tip(text) {
+                msg.textContent = text;
+                msg.classList.add('on');
+                if (msgTimer) clearTimeout(msgTimer);
+                msgTimer = setTimeout(function () { msg.classList.remove('on'); }, 2000);
             }
 
-        const style = document.createElement('style');
-        style.textContent = `
-#homeBtn {
-  position: fixed !important;
-  right: 20px !important;
-  bottom: 170px !important;
-  width: 60px !important;
-  height: 60px !important;
-  background: #2E7CF6 !important;
-  border-radius: 50% !important;
-  color: #fff !important;
-  text-align: center !important;
-  line-height: 60px !important;
-  font-size: 28px !important;
-  z-index: 9999999999 !important;
-  box-shadow: 0 0 20px #2E7CF666 !important;
-  cursor: pointer !important;
-  user-select: none !important;
-  border: none !important;
-  display: block !important;
-  opacity: 1 !important;
-  visibility: visible !important;
-  touch-action: none !important;
-}
-#floatBtn {
-  position: fixed !important;
-  right: 20px !important;
-  bottom: 100px !important;
-  width: 60px !important;
-  height: 60px !important;
-  background: #ff4400 !important;
-  border-radius: 50% !important;
-  color: #fff !important;
-  text-align: center !important;
-  line-height: 60px !important;
-  font-size: 28px !important;
-  z-index: 9999999999 !important;
-  box-shadow: 0 0 20px #ff440066 !important;
-  cursor: pointer !important;
-  user-select: none !important;
-  border: none !important;
-  display: block !important;
-  opacity: 1 !important;
-  visibility: visible !important;
-  touch-action: none !important;
-}
-#toast {
-  position: fixed; top: 50%; left: 50%;
-  transform: translate(-50%,-50%);
-  background: rgba(0,0,0,0.8); color: #fff;
-  padding: 10px 20px; border-radius: 6px;
-  z-index: 999999999; display: none;
-}
-#pop {
-  position: fixed; top: 50%; left: 50%;
-  transform: translate(-50%,-50%);
-  background: #fff; padding: 20px 25px; border-radius: 14px;
-  box-shadow: 0 0 30px rgba(0,0,0,0.4);
-  z-index: 999999999; text-align: center;
-  display: none; min-width: 220px;
-}
-#pop button {
-  margin: 6px; padding: 10px 16px;
-  border: none; border-radius: 6px;
-  font-size: 15px; cursor: pointer;
-}
-.btn1 { background: #007bff; color: #fff; }
-.btnClose { background: #dc3545; color: #fff; }
-.btnSetting { background: #6c757d; color: #fff; }
-.btnSave { background: #28a745; color: #fff; }
-.btnBack { background: #17a2b8; color: #fff; }
-.defaultBadge {
-  font-size: 12px;
-  background: #ffc107;
-  color: #333;
-  padding: 2px 6px;
-  border-radius: 4px;
-  margin-left: 6px;
-}
-#settingsView {
-  display: none;
-  max-height: 400px;
-  overflow-y: auto;
-  text-align: left;
-}
-.settingItem {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 0;
-  border-bottom: 1px solid #eee;
-}
-.settingItem:last-child { border-bottom: none; }
-.settingLeft { display: flex; align-items: center; }
-.settingRight { display: flex; align-items: center; gap: 8px; }
-.settingName { font-size: 14px; }
-input[type="radio"], input[type="checkbox"] { transform: scale(1.3); }
-video {
-  display: block !important;
-  opacity: 1 !important;
-  visibility: visible !important;
-}
-iframe {
-  display: block !important;
-  opacity: 1 !important;
-  visibility: visible !important;
-}
-`;
-        document.head.appendChild(style);
-
-        const btn = document.createElement('div');
-        btn.id = "floatBtn";
-        btn.innerText = "⚡";
-        btn.style.position = "fixed";
-        btn.style.right = "20px";
-        btn.style.bottom = "100px";
-        btn.style.width = "60px";
-        btn.style.height = "60px";
-        btn.style.background = "#ff4400";
-        btn.style.borderRadius = "50%";
-        btn.style.color = "#fff";
-        btn.style.textAlign = "center";
-        btn.style.lineHeight = "60px";
-        btn.style.fontSize = "28px";
-        btn.style.zIndex = "9999999999";
-        btn.style.boxShadow = "0 0 20px #ff440066";
-        btn.style.cursor = "pointer";
-        btn.style.userSelect = "none";
-        btn.style.border = "none";
-        btn.style.display = "block";
-        btn.style.opacity = "1";
-        btn.style.visibility = "visible";
-        btn.style.touchAction = "none";
-        btn.style.pointerEvents = "auto";
-        document.body.appendChild(btn);
-
-        function makeDraggable(el) {
-            let isDragging = false;
-            let startX, startY, initialLeft, initialTop;
-            el.addEventListener('touchstart', function(e) {
-                isDragging = true;
-                const touch = e.touches[0];
-                startX = touch.clientX;
-                startY = touch.clientY;
-                initialLeft = el.offsetLeft;
-                initialTop = el.offsetTop;
-                el.style.transition = 'none';
-            });
-            window.addEventListener('touchmove', function(e) {
-                if (!isDragging) return;
-                const touch = e.touches[0];
-                const moveX = touch.clientX - startX;
-                const moveY = touch.clientY - startY;
-                el.style.left = initialLeft + moveX + 'px';
-                el.style.top = initialTop + moveY + 'px';
-                el.style.right = 'auto';
-                el.style.bottom = 'auto';
-                e.preventDefault();
-            });
-            window.addEventListener('touchend', function() {
-                isDragging = false;
-            });
-        }
-        makeDraggable(btn);
-
-        // ===== 主页按钮：任意页面悬浮，点击回聚合TV 主页 =====
-        const homeBtn = document.createElement('div');
-        homeBtn.id = "homeBtn";
-        homeBtn.innerText = "🏠";
-        homeBtn.style.position = "fixed";
-        homeBtn.style.right = "20px";
-        homeBtn.style.bottom = "170px";
-        homeBtn.style.width = "60px";
-        homeBtn.style.height = "60px";
-        homeBtn.style.background = "#2E7CF6";
-        homeBtn.style.borderRadius = "50%";
-        homeBtn.style.color = "#fff";
-        homeBtn.style.textAlign = "center";
-        homeBtn.style.lineHeight = "60px";
-        homeBtn.style.fontSize = "28px";
-        homeBtn.style.zIndex = "9999999999";
-        homeBtn.style.boxShadow = "0 0 20px #2E7CF666";
-        homeBtn.style.cursor = "pointer";
-        homeBtn.style.userSelect = "none";
-        homeBtn.style.border = "none";
-        homeBtn.style.display = "block";
-        homeBtn.style.opacity = "1";
-        homeBtn.style.visibility = "visible";
-        homeBtn.style.touchAction = "none";
-        homeBtn.style.pointerEvents = "auto";
-        document.body.appendChild(homeBtn);
-        makeDraggable(homeBtn);
-        homeBtn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            if (window.Android && window.Android.openUrl) {
-                window.Android.openUrl(HOME_URL);
-            } else {
-                location.href = HOME_URL;
+            function openSheet() {
+                renderGrid();
+                mainView.style.display = 'block';
+                setView.style.display = 'none';
+                mask.classList.add('on');
+                sheet.classList.add('on');
             }
-        });
+            function closeSheet() {
+                mask.classList.remove('on');
+                sheet.classList.remove('on');
+            }
 
-        const toast = document.createElement('div');
-        toast.id = "toast";
-        document.body.appendChild(toast);
+            function renderGrid() {
+                const list = interfaces.filter(function (i) { return i.visible !== false; });
+                metaEl.textContent = apiStatusText();
+                if (!list.length) {
+                    grid.innerHTML = '<div class="viaPxEmpty">没有启用接口，去「设置」里打开</div>';
+                    return;
+                }
+                let html = '';
+                list.forEach(function (i) {
+                    html += '<button class="viaPxCard' + (i.isDefault ? ' def' : '') + '" data-url="' + escHtml(i.url) + '">'
+                        + '<span class="nm">' + escHtml(i.name) + '</span>'
+                        + '<span class="sub' + (i.isDefault ? ' on' : '') + '">' + (i.isDefault ? '默认接口' : '点击解析') + '</span></button>';
+                });
+                grid.innerHTML = html;
+            }
 
-        function tip(msg) {
-            toast.innerText = msg;
-            toast.style.display = "block";
-            setTimeout(() => toast.style.display = "none", 2000);
-        }
+            function renderSettings() {
+                let html = '<div class="viaPxHead"><span class="viaPxTitle">设置</span><span class="viaPxMeta">' + LOCAL_VER + '</span></div>';
+                html += '<div class="viaPxSec">默认接口 · 右侧开关控制是否显示</div>';
+                interfaces.forEach(function (i, idx) {
+                    html += '<div class="viaPxRow"><span class="l">' + escHtml(i.name) + '</span><span class="r">'
+                        + '<input type="radio" name="viaPxDef" data-idx="' + idx + '"' + (i.isDefault ? ' checked' : '') + '>'
+                        + '<span class="viaPxSw"><input type="checkbox" data-vis="' + idx + '"' + (i.visible !== false ? ' checked' : '') + '><i></i></span>'
+                        + '</span></div>';
+                });
+                html += '<div class="viaPxSec">浏览器行为</div>';
+                html += '<div class="viaPxRow"><span class="l">自动全屏<i>视频开始播放就全屏</i></span>'
+                    + '<span class="viaPxSw"><input type="checkbox" id="viaPxFull"' + (settings.autoFullscreen ? ' checked' : '') + '><i></i></span></div>';
+                html += '<div class="viaPxRow"><span class="l">模拟安卓手机<i>改 UA / 拦截 App 跳转</i></span>'
+                    + '<span class="viaPxSw"><input type="checkbox" id="viaPxSim"' + (settings.simulateAndroid ? ' checked' : '') + '><i></i></span></div>';
+                html += '<div class="viaPxRow" style="display:block"><span class="l">主页地址<i>点「🏠 主页」跳这里</i></span>'
+                    + '<input class="viaPxInput" id="viaPxHome" value="' + escHtml(settings.homeUrl || DEFAULT_HOME_URL) + '"></div>';
+                html += '<div class="viaPxSec">接口来源</div>';
+                html += '<div class="viaPxRow"><span class="l">云端清单<i>' + escHtml(apiStatusText() + (apiMeta.updated_at ? ' · ' + apiMeta.updated_at.slice(5, 16) : '')) + '</i></span>'
+                    + '<button class="viaPxMini" data-act="sync">立即同步</button></div>';
+                html += '<div class="viaPxRow"><span class="l">脚本版本<i>' + escHtml(LOCAL_VER) + '</i></span>'
+                    + '<button class="viaPxMini" data-act="checkver">检查更新</button></div>';
+                html += '<div class="viaPxBar single" style="margin-top:16px"><button data-act="back" class="ghost">返回</button></div>';
+                html += '<div class="viaPxVer">拾光映画接口源 · GitHub Pages 分发</div>';
+                setView.innerHTML = html;
+            }
 
-        function copy() {
+            function parseWith(url) {
+                if (!url) return;
+                try {
+                    const t = document.createElement('textarea');
+                    t.value = location.href;
+                    t.style.cssText = 'position:fixed;top:-9999px;opacity:0;';
+                    document.body.appendChild(t);
+                    t.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(t);
+                } catch (e) {}
+                closeSheet();
+                location.href = url + encodeURIComponent(location.href);
+            }
+
+            function defaultUrl() {
+                const d = interfaces.filter(function (i) { return i.isDefault && i.visible !== false; })[0]
+                    || interfaces.filter(function (i) { return i.visible !== false; })[0];
+                return d ? d.url : '';
+            }
+
+            // ---- 悬浮球：拖动 + 单击开面板 + 双击直解 ----
+            let drag = { on: false, sx: 0, sy: 0, ox: 0, oy: 0, moved: false };
+            let lastTap = 0;
+            let suppressClick = false;
+
+            function posStart(cx, cy) {
+                const r = fab.getBoundingClientRect();
+                drag.on = true; drag.moved = false;
+                drag.sx = cx; drag.sy = cy; drag.ox = r.left; drag.oy = r.top;
+                fab.style.transition = 'none';
+                fab.classList.add('press');
+            }
+            function posMove(cx, cy, evt) {
+                if (!drag.on) return;
+                const dx = cx - drag.sx, dy = cy - drag.sy;
+                if (!drag.moved && (Math.abs(dx) + Math.abs(dy)) < 8) return;
+                drag.moved = true;
+                const w = fab.offsetWidth, h = fab.offsetHeight;
+                let nx = Math.min(Math.max(0, drag.ox + dx), window.innerWidth - w);
+                let ny = Math.min(Math.max(0, drag.oy + dy), window.innerHeight - h);
+                fab.style.left = nx + 'px';
+                fab.style.top = ny + 'px';
+                fab.style.right = 'auto';
+                fab.style.bottom = 'auto';
+                if (evt && evt.cancelable) evt.preventDefault();
+            }
+            function posEnd() {
+                if (!drag.on) return;
+                drag.on = false;
+                fab.classList.remove('press');
+                fab.style.transition = '';
+                if (drag.moved) {
+                    suppressClick = true;
+                    try {
+                        localStorage.setItem('via_fab_pos', JSON.stringify({ l: fab.style.left, t: fab.style.top }));
+                    } catch (e) {}
+                    setTimeout(function () { suppressClick = false; }, 60);
+                }
+            }
+            fab.addEventListener('touchstart', function (e) { const t = e.touches[0]; posStart(t.clientX, t.clientY); }, { passive: true });
+            fab.addEventListener('touchmove', function (e) { const t = e.touches[0]; posMove(t.clientX, t.clientY, e); }, { passive: false });
+            fab.addEventListener('touchend', posEnd);
+            fab.addEventListener('mousedown', function (e) { posStart(e.clientX, e.clientY); });
+            window.addEventListener('mousemove', function (e) { posMove(e.clientX, e.clientY, e); });
+            window.addEventListener('mouseup', posEnd);
+
+            fab.addEventListener('click', function (e) {
+                e.stopPropagation();
+                if (suppressClick) return;
+                const now = Date.now();
+                if (now - lastTap < 300) {
+                    lastTap = 0;
+                    closeSheet();
+                    parseWith(defaultUrl());
+                    return;
+                }
+                lastTap = now;
+                if (sheet.classList.contains('on')) { closeSheet(); } else { openSheet(); }
+            });
+
+            // 恢复上次拖动位置
             try {
-                const t = document.createElement('textarea');
-                t.value = location.href;
-                t.style.position = "fixed";
-                t.style.opacity = "0";
-                document.body.appendChild(t);
-                t.select();
-                document.execCommand('copy');
-                document.body.removeChild(t);
-                tip("✅ 已复制当前链接");
+                const saved = JSON.parse(localStorage.getItem('via_fab_pos') || 'null');
+                if (saved && saved.l && saved.t) {
+                    fab.style.left = saved.l; fab.style.top = saved.t;
+                    fab.style.right = 'auto'; fab.style.bottom = 'auto';
+                }
             } catch (e) {}
-        }
 
-        const pop = document.createElement('div');
-        pop.id = "pop";
-        
-        function apiStatusText() {
-            const t = apiMeta.updated_at ? apiMeta.updated_at.replace(/^\d{4}-/, '') : '';
-            return '接口 ' + (apiMeta.count || interfaces.length) + ' 条 · ' + apiMeta.origin + (t ? ' · ' + t : '');
-        }
+            mask.addEventListener('click', closeSheet);
 
-        function renderMainView() {
-            const visibleInterfaces = interfaces.filter(i => i.visible !== false);
-            
-            let buttonsHtml = '';
-            if (visibleInterfaces.length === 0) {
-                buttonsHtml = '<p style="color:#999;">没有可用的接口</p>';
-            } else if (visibleInterfaces.length === 1) {
-                const badge = visibleInterfaces[0].isDefault ? '<span class="defaultBadge">默认</span>' : '';
-                buttonsHtml = `<button class="btn1" data-action="use-interface" data-url="${visibleInterfaces[0].url}">${visibleInterfaces[0].name}${badge}</button>`;
-            } else {
-                visibleInterfaces.forEach((iface, index) => {
-                    const badge = iface.isDefault ? '<span class="defaultBadge">默认</span>' : '';
-                    buttonsHtml += `<button class="btn1" data-action="use-interface" data-url="${iface.url}">${iface.name}${badge}</button>`;
-                });
-            }
-            
-            pop.innerHTML = `
-<div id="mainView">
-<p>视频解析</p>
-<div style="font-size:11px;color:#888;margin:2px 0 8px;">${apiStatusText()}<button data-action="sync-apis" style="margin-left:6px;padding:2px 8px;border:1px solid #2E7CF6;background:#fff;color:#2E7CF6;border-radius:10px;font-size:11px;cursor:pointer;">刷新</button></div>
-<div id="interfaceList">${buttonsHtml}</div>
-<button class="btnSetting" data-action="settings">⚙️ 设置</button>
-<button class="btnClose" data-action="close">关闭</button>
-</div>
-<div id="settingsView">
-<p style="text-align:center;margin-bottom:10px;font-weight:bold;">接口设置</p>
-</div>
-`;
-        }
-        
-        function renderSettingsView() {
-            const settingsView = pop.querySelector('#settingsView');
-            const mainView = pop.querySelector('#mainView');
-            
-            mainView.style.display = 'none';
-            settingsView.style.display = 'block';
-            
-            let html = `
-<p style="font-size:11px;color:#888;text-align:center;margin-bottom:6px;">${apiStatusText()}<button data-action="sync-apis" style="margin-left:6px;padding:2px 8px;border:1px solid #2E7CF6;background:#fff;color:#2E7CF6;border-radius:10px;font-size:11px;cursor:pointer;">立即同步</button></p>
-<p style="font-size:14px;font-weight:bold;margin-bottom:10px;">设置默认接口</p>
-`;
-            interfaces.forEach((iface, index) => {
-                html += `
-<div class="settingItem">
-<div class="settingLeft">
-<input type="radio" name="default" ${iface.isDefault ? 'checked' : ''} data-index="${index}" data-id="${iface.id}">
-<span class="settingName">${iface.name}</span>
-</div>
-<div class="settingRight">
-<label><input type="checkbox" ${iface.visible !== false ? 'checked' : ''} data-index="${index}"> 显示</label>
-</div>
-</div>
-`;
+            grid.addEventListener('click', function (e) {
+                const card = e.target.closest('.viaPxCard');
+                if (card && card.dataset.url) parseWith(card.dataset.url);
             });
-            
-            html += `
-<div class="settingItem">
-<div class="settingLeft">
-<span class="settingName">自动全屏</span>
-</div>
-<div class="settingRight">
-<label><input type="checkbox" id="autoFullscreenCheck" ${settings.autoFullscreen ? 'checked' : ''}> 开启</label>
-</div>
-</div>
-<div class="settingItem">
-<div class="settingLeft">
-<span class="settingName">模拟安卓手机</span>
-</div>
-<div class="settingRight">
-<label><input type="checkbox" id="simulateCheck" ${settings.simulateAndroid ? 'checked' : ''}> 开启</label>
-</div>
-</div>
-<div style="margin-top:15px;text-align:center;">
-<button class="btnSave" data-action="save">保存设置</button>
-<button class="btnBack" data-action="back">返回</button>
-<button class="btnClose" data-action="close">关闭</button>
-</div>
-`;
-            
-            settingsView.innerHTML = html;
-            
-            settingsView.querySelectorAll('input[name="default"]').forEach(radio => {
-                radio.onchange = () => {
-                    interfaces.forEach(i => i.isDefault = false);
-                    interfaces[parseInt(radio.dataset.index)].isDefault = true;
-                    settings.defaultInterfaceId = radio.dataset.id;
-                };
-            });
-            
-            settingsView.querySelectorAll('input[type="checkbox"]:not(#autoFullscreenCheck):not(#simulateCheck)').forEach(checkbox => {
-                checkbox.onchange = () => {
-                    interfaces[parseInt(checkbox.dataset.index)].visible = checkbox.checked;
-                };
-            });
-            
-            settingsView.querySelector('#autoFullscreenCheck').onchange = (e) => {
-                settings.autoFullscreen = e.target.checked;
-            };
-            
-            settingsView.querySelector('#simulateCheck').onchange = (e) => {
-                settings.simulateAndroid = e.target.checked;
-            };
-        }
 
-        function isNewerVer(a, b) {
-            const pa = String(a).split('.').map(x => parseInt(x, 10) || 0);
-            const pb = String(b).split('.').map(x => parseInt(x, 10) || 0);
-            for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-                const x = pa[i] || 0, y = pb[i] || 0;
-                if (x !== y) return x > y;
-            }
-            return false;
-        }
-
-        function showUpdateBar(meta) {
-            if (document.getElementById('viaUpdBar')) return;
-            const bar = document.createElement('div');
-            bar.id = 'viaUpdBar';
-            bar.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483647;background:#1f2329;color:#fff;font-size:13px;padding:10px 12px;display:flex;align-items:center;gap:10px;box-shadow:0 -2px 10px rgba(0,0,0,.35);';
-            bar.innerHTML = '<span style="flex:1;">发现新版本 ' + meta.version + '（当前 ' + LOCAL_VER + '）</span>' +
-                '<a href="' + (meta.url || '') + '" style="color:#5ea8ff;text-decoration:none;font-weight:600;">立即更新</a>' +
-                '<span data-close="1" style="padding:0 6px;color:#aaa;font-size:18px;line-height:1;cursor:pointer;">×</span>';
-            bar.addEventListener('click', function (e) {
-                if (e.target.getAttribute('data-close')) bar.remove();
-            });
-            document.body.appendChild(bar);
-        }
-
-        function checkVersion() {
-            let last = 0;
-            try { last = parseInt(localStorage.getItem(LS_UPD_AT) || '0', 10); } catch (e) {}
-            if (last && Date.now() - last < CHECK_GAP) return;
-            loadRemoteScript(VERSION_JS_URL + '?t=' + Date.now(), '__VIA_UPD__', 4000, function (m) {
-                try { localStorage.setItem(LS_UPD_AT, String(Date.now())); } catch (e) {}
-                if (!m || !m.version) return;
-                if (!isNewerVer(m.version, LOCAL_VER)) return;
-                showUpdateBar(m);
-            });
-        }
-
-        renderMainView();
-        document.body.appendChild(pop);
-        checkVersion();
-
-        pop.addEventListener('click', (e) => {
-            const target = e.target.closest('button, a[data-action]');
-            if (!target) return;
-            
-            const action = target.dataset.action;
-            
-            if (action === 'close') {
-                pop.style.display = 'none';
-            } else if (action === 'settings') {
-                renderSettingsView();
-            } else if (action === 'sync-apis') {
-                if (e.preventDefault) e.preventDefault();
-                tip("⏳ 正在同步接口…");
-                pullApis(true, function (ok) {
-                    if (ok) { savePrefs(); tip("✅ 已同步 " + apiMeta.count + " 条"); }
-                    else { tip("❌ 同步失败，沿用本机接口"); }
-                    const sv = pop.querySelector('#settingsView');
-                    if (sv && sv.style.display === 'block') renderSettingsView(); else renderMainView();
-                });
-            } else if (action === 'use-interface') {
-                const url = target.dataset.url;
-                if (url) {
-                    pop.style.display = 'none';
-                    copy();
-                    location.href = url + encodeURIComponent(location.href);
-                }
-            } else if (action === 'save') {
-                const visibleCount = interfaces.filter(i => i.visible !== false).length;
-                const defaultCount = interfaces.filter(i => i.isDefault).length;
-                
-                if (visibleCount === 0) {
-                    tip("❌ 请至少启用一个接口");
+            mainView.addEventListener('click', function (e) {
+                const btn = e.target.closest('button[data-act]');
+                if (!btn) return;
+                const act = btn.dataset.act;
+                if (act === 'close') { closeSheet(); return; }
+                if (act === 'copy') {
+                    try {
+                        const t = document.createElement('textarea');
+                        t.value = location.href;
+                        t.style.cssText = 'position:fixed;top:-9999px;opacity:0;';
+                        document.body.appendChild(t); t.select(); document.execCommand('copy');
+                        document.body.removeChild(t);
+                        tip('✅ 已复制当前链接');
+                    } catch (err) { tip('复制失败'); }
                     return;
                 }
-                if (defaultCount === 0) {
-                    tip("❌ 请设置一个默认接口");
+                if (act === 'home') {
+                    const home = settings.homeUrl || DEFAULT_HOME_URL;
+                    closeSheet();
+                    if (window.Android && window.Android.openUrl) window.Android.openUrl(home);
+                    else location.href = home;
                     return;
                 }
-                
-                saveSettings(settings);
-                savePrefs();
-                
-                if (settings.simulateAndroid && !window.__simulated) {
-                    simulateAndroid();
-                    window.__simulated = true;
+                if (act === 'settings') {
+                    renderSettings();
+                    mainView.style.display = 'none';
+                    setView.style.display = 'block';
+                    return;
                 }
-                
-                tip("✅ 设置已保存");
-                renderMainView();
-            } else if (action === 'back') {
-                renderMainView();
-            }
-        });
+            });
 
-        function hideScriptBtn() {
-            btn.style.display = 'none';
-            homeBtn.style.display = 'none';
-            pop.style.display = 'none';
-        }
+            setView.addEventListener('click', function (e) {
+                const btn = e.target.closest('button[data-act]');
+                if (!btn) return;
+                const act = btn.dataset.act;
+                if (act === 'back') {
+                    saveSettings(settings);
+                    renderGrid();
+                    setView.style.display = 'none';
+                    mainView.style.display = 'block';
+                } else if (act === 'sync') {
+                    tip('⏳ 正在同步接口…');
+                    btn.disabled = true;
+                    pullApis(true, function (ok) {
+                        btn.disabled = false;
+                        if (ok) { saveSettings(settings); tip('✅ 已同步 ' + apiMeta.count + ' 条'); }
+                        else { tip('❌ 同步失败，沿用本机接口'); }
+                        renderSettings();
+                    });
+                } else if (act === 'checkver') {
+                    tip('⏳ 正在检查更新…');
+                    checkVersion(true);
+                }
+            });
 
-        function requestVideoFullscreen(element) {
-            if (element.requestFullscreen) {
-                return element.requestFullscreen();
-            } else if (element.webkitRequestFullscreen) {
-                return element.webkitRequestFullscreen();
-            } else if (element.mozRequestFullScreen) {
-                return element.mozRequestFullScreen();
-            } else if (element.msRequestFullscreen) {
-                return element.msRequestFullscreen();
-            } else if (element.webkitEnterFullscreen) {
-                return element.webkitEnterFullscreen();
-            }
-            return Promise.reject(new Error('Fullscreen API not supported'));
-        }
-
-        function observeVideoPlay() {
-            function checkVideos() {
-                document.querySelectorAll('video').forEach(video => {
-                    try {
-                        if (!video.paused && video.readyState >= 2) {
-                            hideScriptBtn();
-                            if (settings.autoFullscreen && !document.fullscreenElement && !document.webkitFullscreenElement) {
-                                requestVideoFullscreen(video).catch(() => {
-                                    requestVideoFullscreen(document.documentElement).catch(() => {});
-                                });
-                            }
-                        }
-                    } catch (e) {}
-                });
-                
-                const iframes = document.querySelectorAll('iframe');
-                iframes.forEach(iframe => {
-                    try {
-                        const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-                        if (iframeDoc) {
-                            iframeDoc.querySelectorAll('video').forEach(video => {
-                                try {
-                                    if (!video.paused && video.readyState >= 2) {
-                                        hideScriptBtn();
-                                        if (settings.autoFullscreen && !document.fullscreenElement && !document.webkitFullscreenElement) {
-                                            requestVideoFullscreen(video).catch(() => {
-                                                requestVideoFullscreen(iframe).catch(() => {
-                                                    requestVideoFullscreen(document.documentElement).catch(() => {});
-                                                });
-                                            });
-                                        }
-                                    }
-                                } catch (e) {}
-                            });
-                        }
-                    } catch (e) {}
-                });
-            }
-
-            checkVideos();
-
-            document.addEventListener('play', (e) => {
-                if (e.target.tagName === 'VIDEO') {
-                    hideScriptBtn();
-                    if (settings.autoFullscreen && !document.fullscreenElement && !document.webkitFullscreenElement) {
-                        requestVideoFullscreen(e.target).catch(() => {
-                            requestVideoFullscreen(document.documentElement).catch(() => {});
-                        });
+            setView.addEventListener('change', function (e) {
+                const t = e.target;
+                if (t.name === 'viaPxDef') {
+                    const idx = parseInt(t.dataset.idx, 10);
+                    interfaces.forEach(function (i, k) { i.isDefault = (k === idx); });
+                    settings.defaultInterfaceId = interfaces[idx].id;
+                    saveSettings(settings);
+                } else if (t.dataset.vis !== undefined) {
+                    const idx = parseInt(t.dataset.vis, 10);
+                    interfaces[idx].visible = !!t.checked;
+                    savePrefs();
+                } else if (t.id === 'viaPxFull') {
+                    settings.autoFullscreen = !!t.checked;
+                    saveSettings(settings);
+                } else if (t.id === 'viaPxSim') {
+                    settings.simulateAndroid = !!t.checked;
+                    saveSettings(settings);
+                    if (settings.simulateAndroid && !window.__simulated) {
+                        simulateAndroid();
+                        window.__simulated = true;
+                        tip('已开启，刷新页面后完全生效');
+                    } else if (!settings.simulateAndroid) {
+                        tip('已关闭，刷新页面后生效');
                     }
                 }
-            }, true);
+            });
 
-            document.addEventListener('webkitbeginfullscreen', () => {
-                hideScriptBtn();
-            });
-            document.addEventListener('mozfullscreenchange', () => {
-                if (document.fullscreenElement) {
-                    hideScriptBtn();
-                }
-            });
-            document.addEventListener('fullscreenchange', () => {
-                if (document.fullscreenElement) {
-                    hideScriptBtn();
+            setView.addEventListener('focusout', function (e) {
+                if (e.target.id === 'viaPxHome') {
+                    const v = (e.target.value || '').trim() || DEFAULT_HOME_URL;
+                    settings.homeUrl = v;
+                    saveSettings(settings);
+                    e.target.value = v;
+                    tip('主页地址已保存');
                 }
             });
 
-            const observer = new MutationObserver((mutations) => {
-                mutations.forEach(mutation => {
-                    mutation.addedNodes.forEach(node => {
-                        if (node.tagName === 'VIDEO') {
-                            node.addEventListener('play', () => {
-                                hideScriptBtn();
-                                if (settings.autoFullscreen && !document.fullscreenElement && !document.webkitFullscreenElement) {
-                                    requestVideoFullscreen(node).catch(() => {
-                                        requestVideoFullscreen(document.documentElement).catch(() => {});
-                                    });
-                                }
-                            });
-                        } else if (node.tagName === 'IFRAME') {
-                            node.addEventListener('load', () => {
-                                try {
-                                    const iframeDoc = node.contentDocument || node.contentWindow?.document;
-                                    if (iframeDoc) {
-                                        iframeDoc.querySelectorAll('video').forEach(v => {
-                                            v.addEventListener('play', () => {
-                                                hideScriptBtn();
-                                                if (settings.autoFullscreen && !document.fullscreenElement && !document.webkitFullscreenElement) {
-                                                    requestVideoFullscreen(v).catch(() => {
-                                                        requestVideoFullscreen(node).catch(() => {
-                                                            requestVideoFullscreen(document.documentElement).catch(() => {});
-                                                        });
-                                                    });
-                                                }
-                                            });
-                                        });
-                                        iframeDoc.addEventListener('play', (e) => {
-                                            if (e.target.tagName === 'VIDEO') {
-                                                hideScriptBtn();
-                                                if (settings.autoFullscreen && !document.fullscreenElement && !document.webkitFullscreenElement) {
-                                                    requestVideoFullscreen(e.target).catch(() => {
-                                                        requestVideoFullscreen(document.documentElement).catch(() => {});
-                                                    });
-                                                }
-                                            }
-                                        }, true);
-                                    }
-                                } catch (e) {}
-                            });
-                        } else if (node.querySelectorAll) {
-                            node.querySelectorAll('video').forEach(v => {
-                                v.addEventListener('play', () => {
-                                    hideScriptBtn();
-                                    if (settings.autoFullscreen && !document.fullscreenElement && !document.webkitFullscreenElement) {
-                                        requestVideoFullscreen(v).catch(() => {
-                                            requestVideoFullscreen(document.documentElement).catch(() => {});
-                                        });
-                                    }
-                                });
-                            });
-                        }
-                    });
-                });
-                checkVideos();
-            });
-
-            observer.observe(document.body, {
-                childList: true,
-                subtree: true
-            });
-
-            setInterval(() => {
-                checkVideos();
-            }, 1000);
-
-            setInterval(() => {
-                try {
-                    const players = document.querySelectorAll('.video, .player, .media, [class*="video"], [class*="player"], [class*="media"]');
-                    players.forEach(player => {
-                        const video = player.querySelector('video');
-                        if (video && !video.paused && video.readyState >= 2) {
-                            hideScriptBtn();
-                            if (settings.autoFullscreen && !document.fullscreenElement && !document.webkitFullscreenElement) {
-                                requestVideoFullscreen(video).catch(() => {
-                                    requestVideoFullscreen(document.documentElement).catch(() => {});
-                                });
-                            }
-                        }
-                    });
-                    
-                    const playingElements = document.querySelectorAll('[style*="animation-play-state"], [class*="playing"], [class*="active"]');
-                    playingElements.forEach(el => {
-                        const video = el.querySelector('video');
-                        if (video && !video.paused) {
-                            hideScriptBtn();
-                            if (settings.autoFullscreen && !document.fullscreenElement && !document.webkitFullscreenElement) {
-                                requestVideoFullscreen(video).catch(() => {
-                                    requestVideoFullscreen(document.documentElement).catch(() => {});
-                                });
-                            }
-                        }
-                    });
-                } catch (e) {}
-            }, 2000);
-        }
-
-        observeVideoPlay();
-
-        function getDefaultInterfaceUrl() {
-            const defIface = interfaces.find(i => i.id === settings.defaultInterfaceId);
-            return defIface ? defIface.url : interfaces[0].url;
-        }
-
-        let lastClickTime = 0;
-        btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const now = Date.now();
-            if (now - lastClickTime < 300) {
-                hideScriptBtn();
-                copy();
-                location.href = getDefaultInterfaceUrl() + encodeURIComponent(location.href);
-            } else {
-                pop.style.display = "block";
+            // ---- 播放时收起，暂停/结束后回来 ----
+            let hideTimer = null;
+            function softHide() {
+                fab.classList.add('hide');
+                if (sheet.classList.contains('on')) closeSheet();
             }
-            lastClickTime = now;
-        });
+            function softShow() {
+                if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+                fab.classList.remove('hide');
+            }
+            function requestVideoFullscreen(el) {
+                try {
+                    if (el.requestFullscreen) return el.requestFullscreen();
+                    if (el.webkitRequestFullscreen) return el.webkitRequestFullscreen();
+                    if (el.webkitEnterFullscreen) return el.webkitEnterFullscreen();
+                    if (el.msRequestFullscreen) return el.msRequestFullscreen();
+                } catch (e) {}
+                return Promise.reject(new Error('no fullscreen'));
+            }
+            function onVideoPlay(v) {
+                softHide();
+                if (settings.autoFullscreen && !document.fullscreenElement && !document.webkitFullscreenElement) {
+                    requestVideoFullscreen(v).catch(function () {
+                        requestVideoFullscreen(document.documentElement).catch(function () {});
+                    });
+                }
+            }
+            document.addEventListener('play', function (e) {
+                if (e.target && e.target.tagName === 'VIDEO') onVideoPlay(e.target);
+            }, true);
+            document.addEventListener('pause', function (e) {
+                if (e.target && e.target.tagName === 'VIDEO') {
+                    if (hideTimer) clearTimeout(hideTimer);
+                    hideTimer = setTimeout(function () { softShow(); }, 1500);
+                }
+            }, true);
+            document.addEventListener('ended', function (e) {
+                if (e.target && e.target.tagName === 'VIDEO') softShow();
+            }, true);
+            document.addEventListener('webkitbeginfullscreen', softHide);
+            document.addEventListener('fullscreenchange', function () {
+                if (document.fullscreenElement) softHide(); else softShow();
+            });
 
-        setInterval(() => {
-                if (!document.getElementById("floatBtn") && document.body) document.body.appendChild(btn);
-                if (!document.getElementById("homeBtn") && document.body) document.body.appendChild(homeBtn);
-                if (!document.getElementById("pop") && document.body) document.body.appendChild(pop);
-            }, 300);
+            // ---- 页面清理掉节点时自动补回 ----
+            setInterval(function () {
+                if (!document.body) return;
+                if (!document.getElementById('viaPxRoot')) {
+                    document.body.appendChild(root);
+                } else if (!document.getElementById('viaPxFab')) {
+                    document.body.appendChild(fab);
+                }
+            }, 2000);
+
+            renderGrid();
         } catch (e) {
-            console.error('CreateBtn error:', e);
+            console.error('viaPx createBtn error:', e);
         }
     }
+
+    // ---- 版本自更新提示 ----
+    function isNewerVer(a, b) {
+        const pa = String(a).split('.').map(function (x) { return parseInt(x, 10) || 0; });
+        const pb = String(b).split('.').map(function (x) { return parseInt(x, 10) || 0; });
+        for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+            const x = pa[i] || 0, y = pb[i] || 0;
+            if (x !== y) return x > y;
+        }
+        return false;
+    }
+
+    function showUpdateBar(meta) {
+        if (document.getElementById('viaUpdBar')) return;
+        const bar = document.createElement('div');
+        bar.id = 'viaUpdBar';
+        bar.innerHTML = '<span style="flex:1;">发现新版本 ' + escHtml(meta.version) + '（当前 ' + LOCAL_VER + '）</span>'
+            + '<a href="' + escHtml(meta.url || '') + '" style="color:#5ea8ff;text-decoration:none;font-weight:600;padding:4px;">立即更新</a>'
+            + '<span data-close="1" style="padding:0 8px;color:#8b93a1;font-size:18px;line-height:1;cursor:pointer;">×</span>';
+        bar.addEventListener('click', function (e) {
+            if (e.target.getAttribute('data-close')) bar.remove();
+        });
+        document.body.appendChild(bar);
+    }
+
+    function checkVersion(force) {
+        if (!document.body) return;
+        let last = 0;
+        try { last = parseInt(localStorage.getItem(LS_UPD_AT) || '0', 10); } catch (e) {}
+        if (!force && last && Date.now() - last < CHECK_GAP) return;
+        loadRemoteScript(VERSION_JS_URL + '?t=' + Date.now(), '__VIA_UPD__', 4000, function (m) {
+            try { localStorage.setItem(LS_UPD_AT, String(Date.now())); } catch (e) {}
+            if (!m || !m.version) return;
+            if (!isNewerVer(m.version, LOCAL_VER)) return;
+            showUpdateBar(m);
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function () {
+            createBtn();
+            setTimeout(function () { checkVersion(false); }, 1200);
+        });
+    } else {
+        createBtn();
+        setTimeout(function () { checkVersion(false); }, 1200);
+    }
+    setTimeout(function () { if (document.body && !document.getElementById('viaPxFab')) createBtn(); }, 3000);
 })();
