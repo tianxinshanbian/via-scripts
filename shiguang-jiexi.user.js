@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         拾光解析
 // @namespace    https://viayoo.com/86wod5
-// @version      8.1.1
+// @version      8.1.2
 // @description  Via通用 · 聚合TV悬浮导航 · 底部抽屉界面 · 接口云端自动同步（跟随拾光映画接口源）
 // @run-at       document-start
 // @match        *://*/*
@@ -17,7 +17,7 @@
 
     // ================= 云端接口清单 =================
     // apis.js / apis.json 由 sync_apis.py 从「拾光映画接口源」同步后发布到 GitHub Pages
-    const LOCAL_VER = '8.1.1';
+    const LOCAL_VER = '8.1.2';
     // 8.1.0 起弃用 NAS 隧道源：清单由 NAS 容器主动推到 GitHub，脚本只认固定地址
     const NAS_SOURCES = [];
     const GITHUB_SOURCES = [
@@ -257,6 +257,67 @@
 
     const deviceType = isIOS() ? 'ios' : isAndroid() ? 'android' : 'other';
 
+    // ---- 轻量提示（不依赖 UI 层是否已创建）----
+    function tipMsg(text) {
+        try {
+            if (typeof window.__viaPxToast === 'function') { window.__viaPxToast(text); return; }
+        } catch (e) {}
+        try {
+            if (!document.body) return;
+            let el = document.getElementById('viaPxToast');
+            if (!el) {
+                el = document.createElement('div');
+                el.id = 'viaPxToast';
+                el.style.cssText = 'position:fixed;left:50%;bottom:12%;transform:translateX(-50%);'
+                    + 'z-index:2147483000;background:rgba(20,20,20,.92);color:#fff;font-size:14px;'
+                    + 'line-height:1.5;padding:10px 16px;border-radius:10px;max-width:80vw;'
+                    + 'box-shadow:0 4px 16px rgba(0,0,0,.4);transition:opacity .3s';
+                document.body.appendChild(el);
+            }
+            el.textContent = text;
+            el.style.opacity = '1';
+            clearTimeout(el.__t);
+            el.__t = setTimeout(function () { el.style.opacity = '0'; }, 2000);
+        } catch (e) {}
+    }
+
+    // ---- 打开外部地址：优先顶层窗口，逐级兜底 ----
+    // 本脚本 @all-frames 在每个 iframe 里各跑一份，直接 location.href 只会跳 iframe 自己
+    function openTop(url) {
+        let isFrame = false;
+        try { isFrame = window.top !== window; } catch (e) { isFrame = true; }
+        if (isFrame) {
+            // iframe 里：先跳整个页面，再考虑新窗口，最后才退成只跳 iframe 自己
+            try { window.top.location.href = url; return true; } catch (e) {}
+            try { if (window.open(url, '_blank')) return true; } catch (e) {}
+            try { location.href = url; return true; } catch (e) {}
+            return false;
+        }
+        // 顶层单页：直接导航最可靠，window.open 反而可能被拦或什么都不发生
+        try { location.href = url; return true; } catch (e) {}
+        try { if (window.open(url, '_blank')) return true; } catch (e) {}
+        return false;
+    }
+
+    function openTarget(url) {
+        const before = location.href;
+        let handled = false;
+        const and = window.Android;
+        if (and && typeof and.openUrl === 'function' && !and.__pxFake) {
+            try { and.openUrl(url); handled = true; } catch (e) {}
+        }
+        if (!handled) handled = openTop(url);
+        if (!handled) { tipMsg('打不开这个地址，换成 http(s) 链接试试'); return; }
+        // 1.2 秒后还停在原页，说明被浏览器/App 拦了，给个明确提示而不是静默
+        setTimeout(function () {
+            try {
+                if (location.href === before) {
+                    tipMsg('没跳转：这个地址被浏览器或 App 拦了');
+                }
+            } catch (e) {}
+        }, 1200);
+    }
+
     function loadSettings() {
         try {
             const saved = localStorage.getItem('video_parser_settings_v3');
@@ -439,7 +500,8 @@
                 configurable: true
             });
 
-            window.Android = {
+            if (!window.Android || window.Android.__pxFake) window.Android = {
+                __pxFake: true,
                 appVersion: '13',
                 os: 'Android',
                 version: '13',
@@ -464,7 +526,7 @@
                 hasPermission: (perm) => true,
                 requestPermission: (perm, cb) => { cb(true); },
                 downloadFile: (url, name) => {},
-                openUrl: (url) => { location.href = url; },
+                openUrl: (url) => { openTop(url); },
                 setClipboardText: (text) => {},
                 getClipboardText: () => '',
                 getAppName: () => 'Via',
@@ -1187,8 +1249,7 @@ iframe{display:block !important;opacity:1 !important;visibility:visible !importa
                     const home = (settings.homeUrl || '').trim();
                     if (!home) { tip('主页地址还没填，去「设置」里填一个'); return; }
                     closeSheet();
-                    if (window.Android && window.Android.openUrl) window.Android.openUrl(home);
-                    else location.href = home;
+                    openTarget(home);
                     return;
                 }
                 if (act === 'settings') {
@@ -1255,6 +1316,13 @@ iframe{display:block !important;opacity:1 !important;visibility:visible !importa
                     } else if (!settings.simulateAndroid) {
                         tip('已关闭，刷新页面后生效');
                     }
+                }
+            });
+
+            setView.addEventListener('input', function (e) {
+                if (e.target.id === 'viaPxHome') {
+                    settings.homeUrl = (e.target.value || '').trim();
+                    saveSettings(settings);
                 }
             });
 
