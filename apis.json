@@ -1,6 +1,6 @@
 {
-  "version": 1795626833,
-  "updated_at": "2026-11-25 17:13:53",
+  "version": 1795680778,
+  "updated_at": "2026-11-26 08:12:58",
   "source": "拾光映画接口源",
   "source_file": "video_config.json",
   "source_path": "/src/video_config.json",
@@ -16,6 +16,7 @@
     "https://free.maccms.xyz/?url="
   ],
   "default_apis": [
+    "https://bfq.txnp.cn/player?url=",
     "https://art.txnp.cn/?url=",
     "https://jiexi.789jiexi.icu:4433/?url="
   ],
