@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         拾光解析
 // @namespace    https://viayoo.com/86wod5
-// @version      8.1.2
+// @version      8.1.4
 // @description  Via通用 · 聚合TV悬浮导航 · 底部抽屉界面 · 接口云端自动同步（跟随拾光映画接口源）
 // @run-at       document-start
 // @match        *://*/*
@@ -17,7 +17,7 @@
 
     // ================= 云端接口清单 =================
     // apis.js / apis.json 由 sync_apis.py 从「拾光映画接口源」同步后发布到 GitHub Pages
-    const LOCAL_VER = '8.1.2';
+    const LOCAL_VER = '8.1.4';
     // 8.1.0 起弃用 NAS 隧道源：清单由 NAS 容器主动推到 GitHub，脚本只认固定地址
     const NAS_SOURCES = [];
     const GITHUB_SOURCES = [
@@ -287,32 +287,38 @@
         let isFrame = false;
         try { isFrame = window.top !== window; } catch (e) { isFrame = true; }
         if (isFrame) {
-            // iframe 里：先跳整个页面，再考虑新窗口，最后才退成只跳 iframe 自己
-            try { window.top.location.href = url; return true; } catch (e) {}
-            try { if (window.open(url, '_blank')) return true; } catch (e) {}
-            try { location.href = url; return true; } catch (e) {}
-            return false;
+            // iframe 里：优先跳整个页面；顶层被拦就开新标签；最后才退成只跳自己
+            try { window.top.location.href = url; return 'top'; } catch (e) {}
+            try { if (window.open(url, '_blank')) return 'open'; } catch (e) {}
         }
-        // 顶层单页：直接导航最可靠，window.open 反而可能被拦或什么都不发生
-        try { location.href = url; return true; } catch (e) {}
-        try { if (window.open(url, '_blank')) return true; } catch (e) {}
-        return false;
+        try { location.href = url; return 'self'; } catch (e) {}
+        try { location.assign(url); return 'assign'; } catch (e) {}
+        try { if (window.open(url, '_blank')) return 'open'; } catch (e) {}
+        return '';
     }
 
+    // 主页跳转：只走浏览器自身导航，不碰 window.Android
+    // （Via 等浏览器会自带一个同名对象，里面的 openUrl 和我们想的不一样，调用后静默无反应）
     function openTarget(url) {
         const before = location.href;
-        let handled = false;
-        const and = window.Android;
-        if (and && typeof and.openUrl === 'function' && !and.__pxFake) {
-            try { and.openUrl(url); handled = true; } catch (e) {}
+        let isFrame = false;
+        try { isFrame = window.top !== window; } catch (e) { isFrame = true; }
+        let how = '';
+        // 宿主 App 若要接管跳转，暴露 __pxOpenUrl 即可，没有就忽略
+        try {
+            if (typeof window.__pxOpenUrl === 'function') { window.__pxOpenUrl(url); how = 'hook'; }
+        } catch (e) {}
+        if (!how) how = openTop(url);
+        if (!how) {
+            tipMsg('打不开这个地址（' + (isFrame ? 'iframe' : '顶层') + '），换 http(s) 链接试试');
+            return;
         }
-        if (!handled) handled = openTop(url);
-        if (!handled) { tipMsg('打不开这个地址，换成 http(s) 链接试试'); return; }
-        // 1.2 秒后还停在原页，说明被浏览器/App 拦了，给个明确提示而不是静默
+        // 1.2 秒后顶层画面还没换，明确告警，不再静默
         setTimeout(function () {
             try {
-                if (location.href === before) {
-                    tipMsg('没跳转：这个地址被浏览器或 App 拦了');
+                if (document.hidden) return;
+                if (window.top === window && location.href === before) {
+                    tipMsg('没跳转（方式 ' + how + '）：这个地址被拦截了');
                 }
             } catch (e) {}
         }, 1200);
