@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         拾光解析
 // @namespace    https://viayoo.com/86wod5
-// @version      8.1.4
+// @version      8.1.5
 // @description  Via通用 · 聚合TV悬浮导航 · 底部抽屉界面 · 接口云端自动同步（跟随拾光映画接口源）
 // @run-at       document-start
 // @match        *://*/*
@@ -17,7 +17,7 @@
 
     // ================= 云端接口清单 =================
     // apis.js / apis.json 由 sync_apis.py 从「拾光映画接口源」同步后发布到 GitHub Pages
-    const LOCAL_VER = '8.1.4';
+    const LOCAL_VER = '8.1.5';
     // 8.1.0 起弃用 NAS 隧道源：清单由 NAS 容器主动推到 GitHub，脚本只认固定地址
     const NAS_SOURCES = [];
     const GITHUB_SOURCES = [
@@ -28,6 +28,10 @@
     // 版本清单只认 GitHub：NAS 里那份是静态快照，会过期
     const VERSION_SOURCES = GITHUB_SOURCES;
     const CLOUD_BASE = GITHUB_SOURCES[0];
+    // 默认主页：任何站点不填「主页地址」时，点「🏠 主页」都去这里
+    // 想改全局默认值，改这里，或给云端 apis.json 加一个 "home" 字段（拉清单时自动生效）
+    const DEFAULT_HOME = 'https://www.iqiyi.com/';
+    let defaultHome = DEFAULT_HOME;
     const APIS_JS_URL = CLOUD_BASE + '/apis.js';
     const APIS_JSON_URL = CLOUD_BASE + '/apis.json';
     const VERSION_JS_URL = CLOUD_BASE + '/version.js';
@@ -227,6 +231,9 @@
                     if (allowRetry) { refreshNasBase(true, function () { if (done) done(false); }); return; }
                     if (done) done(false);
                     return;
+                }
+                if (payload.home && /^https?:/i.test(String(payload.home).trim())) {
+                    defaultHome = String(payload.home).trim();
                 }
                 var isGithub = GITHUB_SOURCES.indexOf(from) >= 0;
                 applyInterfaceList(payload.apis, payload.default_apis || [], {
@@ -1130,8 +1137,8 @@ iframe{display:block !important;opacity:1 !important;visibility:visible !importa
                     + '<span class="viaPxSw"><input type="checkbox" id="viaPxFull"' + (settings.autoFullscreen ? ' checked' : '') + '><i></i></span></div>';
                 html += '<div class="viaPxRow"><span class="l">模拟安卓手机<i>改 UA / 拦截 App 跳转</i></span>'
                     + '<span class="viaPxSw"><input type="checkbox" id="viaPxSim"' + (settings.simulateAndroid ? ' checked' : '') + '><i></i></span></div>';
-                html += '<div class="viaPxRow" style="display:block"><span class="l">主页地址<i>点「🏠 主页」跳这里</i></span>'
-                    + '<input class="viaPxInput" id="viaPxHome" placeholder="留空则「🏠 主页」不可用；可填 https://… 或 App 打开地址" value="' + escHtml(settings.homeUrl || '') + '"></div>';
+                html += '<div class="viaPxRow" style="display:block"><span class="l">主页地址<i>留空＝默认主页（爱奇艺），填了只对本网站生效</i></span>'
+                    + '<input class="viaPxInput" id="viaPxHome" placeholder="留空＝默认主页 https://www.iqiyi.com/；可填 https://…" value="' + escHtml(settings.homeUrl || '') + '"></div>';
                 html += '<div class="viaPxSec">关于</div>';
                 html += '<div class="viaPxBar single" style="margin-top:16px"><button data-act="back" class="ghost">返回</button></div>';
                 html += '<div class="viaPxVer">接口源：拾光映画 · 分发：GitHub Pages / jsDelivr</div>';
@@ -1252,8 +1259,7 @@ iframe{display:block !important;opacity:1 !important;visibility:visible !importa
                     return;
                 }
                 if (act === 'home') {
-                    const home = (settings.homeUrl || '').trim();
-                    if (!home) { tip('主页地址还没填，去「设置」里填一个'); return; }
+                    const home = (settings.homeUrl || '').trim() || defaultHome;
                     closeSheet();
                     openTarget(home);
                     return;
