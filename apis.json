@@ -1,6 +1,6 @@
 {
-  "version": 1795748706,
-  "updated_at": "2026-11-27 03:05:06",
+  "version": 1795763231,
+  "updated_at": "2026-11-27 07:07:11",
   "source": "拾光映画接口源",
   "source_file": "video_config.json",
   "source_path": "/src/video_config.json",
@@ -26,6 +26,11 @@
     "https://jx.202617.xyz/tv.php?url="
   ],
   "website_links": [
+    {
+      "icon": "🔥",
+      "name": "sotvla",
+      "url": "https://www.sotvla3.cc/"
+    },
     {
       "icon": "🍅",
       "name": "爱追剧",
