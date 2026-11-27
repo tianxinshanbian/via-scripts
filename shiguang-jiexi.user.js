@@ -1,7 +1,9 @@
 // ==UserScript==
 // @name         拾光解析
 // @namespace    https://viayoo.com/86wod5
-// @version      8.1.6
+// @version      8.1.7
+// @updateURL    https://tianxinshanbian.github.io/via-scripts/shiguang-jiexi.user.js
+// @downloadURL  https://tianxinshanbian.github.io/via-scripts/shiguang-jiexi.user.js
 // @description  Via通用 · 聚合TV悬浮导航 · 底部抽屉界面 · 接口云端自动同步（跟随拾光映画接口源）
 // @run-at       document-start
 // @match        *://*/*
@@ -17,7 +19,7 @@
 
     // ================= 云端接口清单 =================
     // apis.js / apis.json 由 sync_apis.py 从「拾光映画接口源」同步后发布到 GitHub Pages
-    const LOCAL_VER = '8.1.6';
+    const LOCAL_VER = '8.1.7';
     // 8.1.0 起弃用 NAS 隧道源：清单由 NAS 容器主动推到 GitHub，脚本只认固定地址
     const NAS_SOURCES = [];
     const GITHUB_SOURCES = [
