@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         拾光解析
 // @namespace    https://viayoo.com/86wod5
-// @version      8.1.7
+// @version      8.1.8
 // @updateURL    https://tianxinshanbian.github.io/via-scripts/shiguang-jiexi.user.js
 // @downloadURL  https://tianxinshanbian.github.io/via-scripts/shiguang-jiexi.user.js
 // @description  Via通用 · 聚合TV悬浮导航 · 底部抽屉界面 · 接口云端自动同步（跟随拾光映画接口源）
@@ -19,7 +19,7 @@
 
     // ================= 云端接口清单 =================
     // apis.js / apis.json 由 sync_apis.py 从「拾光映画接口源」同步后发布到 GitHub Pages
-    const LOCAL_VER = '8.1.7';
+    const LOCAL_VER = '8.1.8';
     // 8.1.0 起弃用 NAS 隧道源：清单由 NAS 容器主动推到 GitHub，脚本只认固定地址
     const NAS_SOURCES = [];
     const GITHUB_SOURCES = [
@@ -105,6 +105,35 @@
     var interfaces = buildInterfaces(FALLBACK_APIS, FALLBACK_DEFAULT);
     var apiMeta = { count: interfaces.length, updated_at: '', origin: '内置' };
 
+    // ================= 影视站（与接口同源同步：云端清单 apis.json 的 website_links） =================
+    const LS_SITES = 'via_sites_cache_v1';
+    // 云端拉不到时的内置兜底（与当前 apis.json 的 website_links 一致）
+    const FALLBACK_SITES = [
+        { icon: '🍅', name: '爱追剧', url: 'https://www.azj66.com/?ref=anee.cc' },
+        { icon: '🍅', name: 'Pomo', url: 'https://pomo.mom/' },
+        { icon: '🎬', name: '共青春', url: 'https://gqc.ink/' },
+        { icon: '🏭', name: '厂长资源', url: 'https://www.4kcz.com/' },
+        { icon: '☁️', name: '蜻蜓电影', url: 'https://www.qtdy11.com/?ref=anee.cc' },
+        { icon: '🖥️', name: 'vip兔', url: 'https://www.viptu.com/?ref=anee.cc#/' },
+        { icon: '🍅', name: '红果短剧', url: 'https://hongguoduanju.com/category/real-drama' }
+    ];
+    var sites = FALLBACK_SITES.slice();
+    var siteMeta = { count: sites.length, updated_at: '', origin: '内置' };
+
+    function applySites(list, meta) {
+        var out = [];
+        (list || []).forEach(function (s) {
+            if (!s || typeof s.url !== 'string') return;
+            var u = s.url.trim();
+            if (!/^https?:\/\//i.test(u)) return;
+            out.push({ icon: String(s.icon || '🎬'), name: String(s.name || u), url: u });
+        });
+        if (!out.length) return false;
+        sites = out;
+        siteMeta = meta || { count: out.length, updated_at: '', origin: '云端' };
+        return true;
+    }
+
     function applyInterfaceList(apis, defaults, meta) {
         var next = buildInterfaces(apis, defaults);
         if (!next.length) return false;
@@ -119,6 +148,13 @@
         try {
             var obj = JSON.parse(localStorage.getItem(LS_APIS) || 'null');
             if (!obj || !obj.apis || !obj.apis.length) return false;
+            if (obj.website_links && obj.website_links.length) {
+                applySites(obj.website_links, {
+                    count: obj.website_links.length,
+                    updated_at: obj.updated_at || '',
+                    origin: '云端'
+                });
+            }
             return applyInterfaceList(obj.apis, obj.default_apis || [], {
                 count: obj.apis.length,
                 updated_at: obj.updated_at || '',
@@ -245,6 +281,14 @@
                 });
                 try { localStorage.setItem(LS_APIS, JSON.stringify(payload)); } catch (e) {}
                 try { localStorage.setItem(LS_APIS_AT, String(now)); } catch (e) {}
+                if (payload.website_links && payload.website_links.length) {
+                    applySites(payload.website_links, {
+                        count: payload.website_links.length,
+                        updated_at: payload.updated_at || '',
+                        origin: (!from || isGithub) ? '云端' : 'NAS'
+                    });
+                    try { localStorage.setItem(LS_SITES, JSON.stringify(payload.website_links)); } catch (e) {}
+                }
                 if (done) done(true);
             }, apiSources());
         }
@@ -252,6 +296,12 @@
 
     // 启动即用本地缓存，随后按 30 分钟节流去云端刷新
     readApiCache();
+    try {
+        var cachedSites = JSON.parse(localStorage.getItem(LS_SITES) || 'null');
+        if (cachedSites && cachedSites.length) {
+            applySites(cachedSites, { count: cachedSites.length, updated_at: '', origin: '云端' });
+        }
+    } catch (e) {}
     setTimeout(function () { pullApis(false); }, 800);
 
     const originalUA = navigator.userAgent.toLowerCase();
@@ -342,6 +392,7 @@
                     simulateAndroid: parsed.simulateAndroid !== undefined ? parsed.simulateAndroid : (deviceType === 'ios'),
                     defaultInterfaceId: parsed.defaultInterfaceId || '',
                     autoFullscreen: parsed.autoFullscreen !== undefined ? parsed.autoFullscreen : false,
+                    showMovie: parsed.showMovie !== undefined ? parsed.showMovie : true,
                     homeUrl: parsed.homeUrl || ''
                 };
             }
@@ -350,6 +401,7 @@
             simulateAndroid: deviceType === 'ios',
             defaultInterfaceId: '',
             autoFullscreen: false,
+            showMovie: true,
             homeUrl: ''
         };
     }
@@ -984,6 +1036,10 @@
 #viaPxMain{padding:2px 16px 12px;overflow-y:auto;}
 .viaPxHead{display:flex;align-items:center;justify-content:space-between;margin:6px 0 12px;}
 .viaPxTitle{font-size:17px;font-weight:600;letter-spacing:.5px;}
+.viaPxTabs{display:flex;align-items:center;gap:18px;}
+.viaPxTab{font-size:15px;color:#8b93a1;padding:2px 0 5px;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap;transition:color .15s;}
+.viaPxTab.on{color:#e8eaed;font-weight:600;border-bottom-color:#ff6a00;}
+.viaPxCard,.viaPxTab,.viaPxGrid{box-sizing:border-box;}
 .viaPxMeta{display:block;font-size:11px;color:#8b93a1;margin:-6px 0 10px;}.viaPxVer{font-size:11px;color:#8b93a1;}
 .viaPxGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
 .viaPxCard{min-width:0;background:#1d2230;border:1px solid #262c3b;border-radius:14px;padding:11px 12px;color:#e8eaed;
@@ -1060,8 +1116,9 @@ iframe{display:block !important;opacity:1 !important;visibility:visible !importa
 <div id="viaPxSheet">
   <div class="viaPxGrip"></div>
   <div id="viaPxMain">
-    <div class="viaPxHead"><span class="viaPxTitle">视频解析</span></div><div class="viaPxMeta" id="viaPxMeta"></div>
+    <div class="viaPxHead"><div class="viaPxTabs"><span class="viaPxTab on" id="viaPxTabParse">视频解析</span><span class="viaPxTab" id="viaPxTabMovie">🎬 影视</span></div></div><div class="viaPxMeta" id="viaPxMeta"></div>
     <div class="viaPxGrid" id="viaPxGrid"></div>
+    <div class="viaPxGrid" id="viaPxSiteGrid" style="display:none"></div>
     <div class="viaPxBar">
       <button data-act="home">🏠 主页</button>
       <button data-act="copy">📋 复制</button>
@@ -1083,6 +1140,10 @@ iframe{display:block !important;opacity:1 !important;visibility:visible !importa
             const metaEl = root.querySelector('#viaPxMeta');
             const mainView = root.querySelector('#viaPxMain');
             const setView = root.querySelector('#viaPxSettings');
+            const siteGrid = root.querySelector('#viaPxSiteGrid');
+            const tabParse = root.querySelector('#viaPxTabParse');
+            const tabMovie = root.querySelector('#viaPxTabMovie');
+            let viewMode = 'parse';
 
             let msgTimer = null;
             function tip(text) {
@@ -1095,6 +1156,8 @@ iframe{display:block !important;opacity:1 !important;visibility:visible !importa
 
             function openSheet() {
                 renderGrid();
+                applyMovieTab();
+                setTab(viewMode);
                 mainView.style.display = 'block';
                 setView.style.display = 'none';
                 mask.classList.add('on');
@@ -1121,12 +1184,55 @@ iframe{display:block !important;opacity:1 !important;visibility:visible !importa
                 grid.innerHTML = html;
             }
 
+            function siteStatusText() {
+                return (siteMeta.count || sites.length) + ' 个影视站 · ' + siteMeta.origin;
+            }
+
+            function renderSites() {
+                if (!sites.length) {
+                    siteGrid.innerHTML = '<div class="viaPxEmpty">暂无影视站，等云端清单更新，或去设置里点「立即同步」</div>';
+                    return;
+                }
+                var html = '';
+                sites.forEach(function (s) {
+                    html += '<button class="viaPxCard" data-site="' + escHtml(s.url) + '">'
+                        + '<span class="nm">' + escHtml((s.icon ? s.icon + ' ' : '') + s.name) + '</span>'
+                        + '<span class="sub">点击打开</span></button>';
+                });
+                siteGrid.innerHTML = html;
+            }
+
+            function setTab(mode) {
+                if (mode === 'movie' && settings.showMovie === false) mode = 'parse';
+                viewMode = mode;
+                tabParse.classList.toggle('on', mode === 'parse');
+                tabMovie.classList.toggle('on', mode === 'movie');
+                grid.style.display = mode === 'parse' ? '' : 'none';
+                siteGrid.style.display = mode === 'movie' ? '' : 'none';
+                if (mode === 'movie') {
+                    renderSites();
+                    metaEl.textContent = siteStatusText();
+                    tabMovie.style.display = '';
+                } else {
+                    metaEl.textContent = apiStatusText();
+                }
+            }
+
+            function applyMovieTab() {
+                var show = settings.showMovie !== false;
+                tabMovie.style.display = show ? '' : 'none';
+                if (!show && viewMode === 'movie') setTab('parse');
+            }
+
             function renderSettings() {
                 let html = '<div class="viaPxHead"><span class="viaPxTitle">设置</span><span class="viaPxVer">' + LOCAL_VER + '</span></div>';
                 html += '<div class="viaPxRow"><span class="l">云端清单<i id="viaApiHint">' + escHtml(apiStatusText() + (apiMeta.updated_at ? ' · ' + apiMeta.updated_at.slice(5, 16) : '')) + '</i></span>'
                     + '<button class="viaPxMini" data-act="sync">立即同步</button></div>';
                 html += '<div class="viaPxRow"><span class="l">脚本版本<i id="viaVerHint">' + escHtml(LOCAL_VER) + '</i></span>'
                     + '<button class="viaPxMini" data-act="checkver">检查更新</button></div>';
+                html += '<div class="viaPxSec">功能入口</div>';
+                html += '<div class="viaPxRow"><span class="l">🎬 影视<i>抽屉顶部第二个标签，影视站随云端清单同步</i></span>'
+                    + '<span class="viaPxSw"><input type="checkbox" id="viaPxMovie"' + (settings.showMovie !== false ? ' checked' : '') + '><i></i></span></div>';
                 html += '<div class="viaPxSec">默认接口 · 右侧开关控制是否显示</div>';
                 interfaces.forEach(function (i, idx) {
                     html += '<div class="viaPxRow"><span class="l">' + escHtml(i.name) + '</span><span class="r">'
@@ -1244,7 +1350,19 @@ iframe{display:block !important;opacity:1 !important;visibility:visible !importa
                 if (card && card.dataset.url) parseWith(card.dataset.url);
             });
 
+            siteGrid.addEventListener('click', function (e) {
+                const card = e.target.closest('.viaPxCard');
+                if (!card || !card.dataset.site) return;
+                closeSheet();
+                openTarget(card.dataset.site);
+            });
+
             mainView.addEventListener('click', function (e) {
+                const tab = e.target.closest('.viaPxTab');
+                if (tab) {
+                    setTab(tab.id === 'viaPxTabMovie' ? 'movie' : 'parse');
+                    return;
+                }
                 const btn = e.target.closest('button[data-act]');
                 if (!btn) return;
                 const act = btn.dataset.act;
@@ -1317,6 +1435,11 @@ iframe{display:block !important;opacity:1 !important;visibility:visible !importa
                     const idx = parseInt(t.dataset.vis, 10);
                     interfaces[idx].visible = !!t.checked;
                     savePrefs();
+                } else if (t.id === 'viaPxMovie') {
+                    settings.showMovie = !!t.checked;
+                    saveSettings(settings);
+                    applyMovieTab();
+                    tip(settings.showMovie ? '🎬 影视入口已开启' : '🎬 影视入口已关闭');
                 } else if (t.id === 'viaPxFull') {
                     settings.autoFullscreen = !!t.checked;
                     saveSettings(settings);
@@ -1405,6 +1528,8 @@ iframe{display:block !important;opacity:1 !important;visibility:visible !importa
             }, 2000);
 
             renderGrid();
+            applyMovieTab();
+            setTab('parse');
         } catch (e) {
             console.error('viaPx createBtn error:', e);
         }
