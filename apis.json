@@ -1,16 +1,15 @@
 {
-  "version": 1795763231,
-  "updated_at": "2026-11-27 07:07:11",
+  "version": 1795763294,
+  "updated_at": "2026-11-27 07:08:14",
   "source": "拾光映画接口源",
   "source_file": "video_config.json",
   "source_path": "/src/video_config.json",
-  "count": 10,
+  "count": 9,
   "apis": [
     "https://bfq.txnp.cn/player?url=",
     "https://art.txnp.cn/?url=",
     "https://aibox.eu.org/?url=",
     "https://jiexi.789jiexi.icu:4433/?url=",
-    "https://jiexi.789jiexi.com/?url=",
     "https://jx.nnxv.cn/tv.php?url=",
     "https://jx.202617.xyz/tv.php?url=",
     "https://im1907.top/?jx=",
@@ -22,7 +21,6 @@
     "https://art.txnp.cn/?url=",
     "https://aibox.eu.org/?url=",
     "https://jiexi.789jiexi.icu:4433/?url=",
-    "https://jiexi.789jiexi.com/?url=",
     "https://jx.202617.xyz/tv.php?url="
   ],
   "website_links": [
