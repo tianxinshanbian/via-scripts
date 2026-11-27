@@ -1,1 +1,1 @@
-window.__VIA_UPD__ = {"version": "8.1.7", "url": "https://tianxinshanbian.github.io/via-scripts/shiguang-jiexi.user.js", "size": 67593, "md5": "89e3a2764773b51b403d8a4d3c6811e1", "nas": "", "updated_at": "2026-11-27 14:59:20"};
+window.__VIA_UPD__ = {"version": "8.1.7", "url": "https://tianxinshanbian.github.io/via-scripts/shiguang-jiexi.user.js", "size": 67593, "md5": "89e3a2764773b51b403d8a4d3c6811e1", "nas": "", "updated_at": "2026-11-27 15:05:27"};
